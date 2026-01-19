@@ -1,9 +1,11 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { UnauthorizedException } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { User } from 'src/users/user.schema';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
+import { MailerService } from '@nestjs-modules/mailer';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { UpdateAuthDto } from './dto/update-auth.dto';
 import { access } from 'fs';
@@ -11,8 +13,9 @@ import { access } from 'fs';
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel('User') private userModel: Model<User>,
+    @InjectModel(User.name) private userModel: Model<User>,
     private jwtService: JwtService, 
+    private mailerService: MailerService,
   ){}
 
   async register(email: string, pass: string) {
@@ -23,11 +26,36 @@ export class AuthService {
     return newUser.save();
   }
 
-  async login(user: any){
-    const payload = {email: user.email, sub: user._id};
-    return{
-      access_token: this.jwtService.sign(payload),
+  async login(email: string, pass: string) {
+  const user = await this.userModel.findOne({ email });
+  if (user && await bcrypt.compare(pass, user.password)) {
+    const payload = { sub: user._id, email: user.email };
+    return {
+      access_token: await this.jwtService.signAsync(payload),
     };
+  }
+  throw new UnauthorizedException('Sai email hoac mat khau');
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user) throw new BadRequestException('Email không tồn tại trong hệ thống!');
+
+    // Tạo mã xác nhận ngẫu nhiên 6 số
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Lưu mã này vào DB để kiểm tra sau (nên có thời gian hết hạn)
+    user.resetToken = otp;
+    await user.save();
+
+    // Gửi mail vào MailHog
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Ma xac nhan thay doi mat khau',
+      html: `<b>Ma xac nhan la: ${otp} <p>Ma co hieu luc trong 5p</p>`,
+    });
+
+    return { message: '..........................!' };
   }
 
   /* Code mac dinh cua he thong 
