@@ -1,9 +1,9 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { AuthRegisterDto } from './authRegister.dto';
-import { AuthForgotPasswordDTO } from './authForgotPassword.dto';
+import { AuthRegisterDto } from './dto/authRegister.dto';
+import { AuthForgotPasswordDTO } from './dto/authForgotPassword.dto';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
-import { AuthLoginDto } from './authLogin.dto';
+import { AuthLoginDto } from './dto/authLogin.dto';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
@@ -27,7 +27,7 @@ export class AuthController {
   async forgotPassword(@Body() forgotPasswordDto: AuthForgotPasswordDTO) {
     return this.authService.forgotPassword(forgotPasswordDto.email);
   }
-  /* code mac dinh he thong
+  /* 
   @Post()
   create(@Body() createAuthDto: CreateAuthDto) {
     return this.authService.create(createAuthDto);

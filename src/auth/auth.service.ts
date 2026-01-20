@@ -37,14 +37,10 @@ export class AuthService {
     if (!user)
       throw new BadRequestException('Email khong ton tai tren he thong!');
 
-    // Tạo mã xác nhận ngẫu nhiên 6 số
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Lưu mã này vào DB để kiểm tra sau
     user.resetToken = otp;
     await user.save();
 
-    // Gửi mail vào MailHog
     await this.mailerService.sendMail({
       to: email,
       subject: 'Ma xac nhan thay doi mat khau',
@@ -54,7 +50,7 @@ export class AuthService {
     return { message: '..........................!' };
   }
 
-  /* Code mac dinh cua he thong 
+  /* 
   create(createAuthDto: CreateAuthDto) {
     return 'This action adds a new auth';
   }
