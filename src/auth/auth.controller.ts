@@ -1,11 +1,9 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthRegisterDto } from './authRegister.dto';
+import { AuthForgotPasswordDTO } from './authForgotPassword.dto';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { AuthLoginDto } from './authLogin.dto';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
-
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
@@ -18,10 +16,16 @@ export class AuthController {
     return this.authService.register(registerDto.email, registerDto.password);
   }
 
-  @Post('forgot-password')
-  @ApiOperation({ summary: 'Gửi mã OTP quên mật khẩu qua MailHog' })
-  async forgotPassword(@Body('email') email: string) {
-    return this.authService.forgotPassword(email);
+  @Post('login')
+  @ApiOperation({ summary: 'Dang nhap he thong' })
+  async login(@Body() loginDto: AuthLoginDto) {
+    return this.authService.login(loginDto.email, loginDto.password);
+  }
+
+  @Post('forgotPassword')
+  @ApiOperation({ summary: 'Gui ma OTP quen mat khau qua MailHog' })
+  async forgotPassword(@Body() forgotPasswordDto: AuthForgotPasswordDTO) {
+    return this.authService.forgotPassword(forgotPasswordDto.email);
   }
   /* code mac dinh he thong
   @Post()

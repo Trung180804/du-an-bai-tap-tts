@@ -6,45 +6,41 @@ import { User } from 'src/users/user.schema';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
-import { access } from 'fs';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
-    private jwtService: JwtService, 
+    private jwtService: JwtService,
     private mailerService: MailerService,
-  ){}
+  ) {}
 
   async register(email: string, pass: string) {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(pass, salt);
-    
+    const hashedPassword = await bcrypt.hash(pass, 10);
     const newUser = new this.userModel({ email, password: hashedPassword });
     return newUser.save();
   }
 
   async login(email: string, pass: string) {
-  const user = await this.userModel.findOne({ email });
-  if (user && await bcrypt.compare(pass, user.password)) {
-    const payload = { sub: user._id, email: user.email };
-    return {
-      access_token: await this.jwtService.signAsync(payload),
-    };
-  }
-  throw new UnauthorizedException('Sai email hoac mat khau');
+    const user = await this.userModel.findOne({ email });
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      const payload = { sub: user._id, email: user.email };
+      return {
+        access_token: await this.jwtService.signAsync(payload),
+      };
+      throw new UnauthorizedException('Sai email hoac mat khau');
+    }
   }
 
   async forgotPassword(email: string) {
     const user = await this.userModel.findOne({ email });
-    if (!user) throw new BadRequestException('Email không tồn tại trong hệ thống!');
+    if (!user)
+      throw new BadRequestException('Email khong ton tai tren he thong!');
 
     // Tạo mã xác nhận ngẫu nhiên 6 số
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Lưu mã này vào DB để kiểm tra sau (nên có thời gian hết hạn)
+
+    // Lưu mã này vào DB để kiểm tra sau
     user.resetToken = otp;
     await user.save();
 
