@@ -28,14 +28,14 @@ export class AuthService {
       return {
         access_token: await this.jwtService.signAsync(payload),
       };
-      throw new UnauthorizedException('Sai email hoac mat khau');
+      throw new UnauthorizedException('Email or password is false');
     }
   }
 
   async forgotPassword(email: string) {
     const user = await this.userModel.findOne({ email });
     if (!user)
-      throw new BadRequestException('Email khong ton tai tren he thong!');
+      throw new BadRequestException('Email do not exist!');
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetToken = otp;
@@ -43,8 +43,8 @@ export class AuthService {
 
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Ma xac nhan thay doi mat khau',
-      html: `<b>Ma xac nhan la: ${otp} <p>Ma co hieu luc trong 5p</p>`,
+      subject: 'OTP Reset Password',
+      html: `<b>OTP is: ${otp} <p>OTP is valid in 5 minutes</p>`,
     });
 
     return { message: '..........................!' };

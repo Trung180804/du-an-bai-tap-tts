@@ -10,20 +10,20 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Dang ky tai khoan' })
+  @ApiOperation({ summary: 'Register' })
   @ApiBody({ type: AuthRegisterDto })
   async register(@Body() registerDto: AuthRegisterDto) {
     return this.authService.register(registerDto.email, registerDto.password);
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Dang nhap he thong' })
+  @ApiOperation({ summary: 'Login' })
   async login(@Body() loginDto: AuthLoginDto) {
     return this.authService.login(loginDto.email, loginDto.password);
   }
 
   @Post('forgotPassword')
-  @ApiOperation({ summary: 'Gui ma OTP quen mat khau qua MailHog' })
+  @ApiOperation({ summary: 'Forgot Password' })
   async forgotPassword(@Body() forgotPasswordDto: AuthForgotPasswordDTO) {
     return this.authService.forgotPassword(forgotPasswordDto.email);
   }
