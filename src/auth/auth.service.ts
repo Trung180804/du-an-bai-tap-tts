@@ -1,36 +1,56 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { UnauthorizedException } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { User } from 'src/users/user.schema';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
-import { access } from 'fs';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel('User') private userModel: Model<User>,
-    private jwtService: JwtService, 
-  ){}
+    @InjectModel(User.name) private userModel: Model<User>,
+    private jwtService: JwtService,
+    private mailerService: MailerService,
+  ) {}
 
   async register(email: string, pass: string) {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(pass, salt);
-    
+    const hashedPassword = await bcrypt.hash(pass, 10);
     const newUser = new this.userModel({ email, password: hashedPassword });
     return newUser.save();
   }
 
-  async login(user: any){
-    const payload = {email: user.email, sub: user._id};
-    return{
-      access_token: this.jwtService.sign(payload),
-    };
+  async login(email: string, pass: string) {
+    const user = await this.userModel.findOne({ email });
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      const payload = { sub: user._id, email: user.email };
+      return {
+        access_token: await this.jwtService.signAsync(payload),
+      };
+      throw new UnauthorizedException('Email or password is false');
+    }
   }
 
-  /* Code mac dinh cua he thong 
+  async forgotPassword(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user)
+      throw new BadRequestException('Email do not exist!');
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.resetToken = otp;
+    await user.save();
+
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'OTP Reset Password',
+      html: `<b>OTP is: ${otp} <p>OTP is valid in 5 minutes</p>`,
+    });
+
+    return { message: '..........................!' };
+  }
+
+  /* 
   create(createAuthDto: CreateAuthDto) {
     return 'This action adds a new auth';
   }

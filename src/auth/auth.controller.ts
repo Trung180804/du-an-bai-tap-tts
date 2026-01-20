@@ -1,23 +1,33 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { AuthRegisterDto } from './authRegister.dto';
+import { AuthRegisterDto } from './dto/authRegister.dto';
+import { AuthForgotPasswordDTO } from './dto/authForgotPassword.dto';
 import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
-
+import { AuthLoginDto } from './dto/authLogin.dto';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Dang ky tai khoan' })
+  @ApiOperation({ summary: 'Register' })
   @ApiBody({ type: AuthRegisterDto })
   async register(@Body() registerDto: AuthRegisterDto) {
     return this.authService.register(registerDto.email, registerDto.password);
   }
 
-  /* code mac dinh he thong
+  @Post('login')
+  @ApiOperation({ summary: 'Login' })
+  async login(@Body() loginDto: AuthLoginDto) {
+    return this.authService.login(loginDto.email, loginDto.password);
+  }
+
+  @Post('forgotPassword')
+  @ApiOperation({ summary: 'Forgot Password' })
+  async forgotPassword(@Body() forgotPasswordDto: AuthForgotPasswordDTO) {
+    return this.authService.forgotPassword(forgotPasswordDto.email);
+  }
+  /* 
   @Post()
   create(@Body() createAuthDto: CreateAuthDto) {
     return this.authService.create(createAuthDto);

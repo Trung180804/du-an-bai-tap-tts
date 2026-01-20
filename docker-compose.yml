@@ -2,7 +2,7 @@ version: '3.8'
 services:
   mongodb:
     image: mongo:latest
-    container_name: nest-mongo
+    container_name: nest-mongodb
     ports:
       - 27017:27017
     volumes:
@@ -12,8 +12,8 @@ services:
     image: mailhog/mailhog:latest
     container_name: nest-mailhog
     ports:
-      - 1025:1025 # SMTP server
-      - 8025:8025 # Web UI để xem mail
+      - 1025:1025 
+      - 8025:8025 # Web check mail
 
 volumes:
   mongo-data:
