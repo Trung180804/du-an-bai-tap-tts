@@ -6,7 +6,10 @@ import { User } from 'src/users/user.schema';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
-
+import * as qrcode from 'qrcode';
+import { Response } from 'express';
+import * as otplibModule from 'otplib';
+const authenticator = (otplibModule as any).authenticator;
 @Injectable()
 export class AuthService {
   constructor(
@@ -16,9 +19,24 @@ export class AuthService {
   ) {}
 
   async register(email: string, pass: string) {
-    const hashedPassword = await bcrypt.hash(pass, 10);
-    const newUser = new this.userModel({ email, password: hashedPassword });
-    return newUser.save();
+    try {
+      const existingUser = await this.userModel.findOne({ email });
+      if (existingUser) {
+        throw new BadRequestException('Email already exists');
+      }
+
+      const hashedPassword = await bcrypt.hash(pass, 10);
+
+      const newUser = new this.userModel({
+        email,
+        password: hashedPassword,
+        isTwoFactorAuthEnabled: false,
+        twoFactorAuthSecret: null 
+      });
+      return await newUser.save();
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   async login(email: string, pass: string) {
@@ -28,14 +46,42 @@ export class AuthService {
       return {
         access_token: await this.jwtService.signAsync(payload),
       };
-      throw new UnauthorizedException('Email or password is false');
     }
+    throw new UnauthorizedException('Email or password is false');
+  }
+
+  async validateUser(email: string, pass: string): Promise<User | null> {
+    const user = await this.userModel.findOne({ email });
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      return user;
+    }
+    return null;
+  }
+
+  async GenerateTwoFactorAuthenticationSecret(user: User) {
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(
+      user.email,
+      'NWS',
+      secret,
+    );
+
+    user.twoFactorAuthSecret = secret;
+    await user.save();
+    return { secret, otpauthUrl };
+  }
+
+  async pipeQrCodeStream(stream: Response, otpauthUrl: string) {
+    return qrcode.toFileStream(stream, otpauthUrl);
+  }
+
+  async isTwoFactorAuthenticationCodeValid(twoFactorAuthCode: string, user: User) {
+    return authenticator.verify(twoFactorAuthCode, user.twoFactorAuthSecret);
   }
 
   async forgotPassword(email: string) {
     const user = await this.userModel.findOne({ email });
-    if (!user)
-      throw new BadRequestException('Email do not exist!');
+    if (!user) throw new BadRequestException('Email do not exist!');
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetToken = otp;
@@ -50,25 +96,10 @@ export class AuthService {
     return { message: '..........................!' };
   }
 
-  /* 
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
+  generateJwt(user: User) {
+    const payload = { sub: user._id, email: user.email };
+    return {
+      access_token: this.jwtService.sign(payload),
+    };
   }
-
-  findAll() {
-    return `This action returns all auth`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
-
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
-  }
-  */
 }

@@ -8,9 +8,11 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { User, UserSchema } from 'src/users/user.schema';
+import { UsersModule } from '@/users/users.module';
 
 @Module({
   imports: [
+    UsersModule,
     ConfigModule.forRoot(),
     PassportModule,
     JwtModule.registerAsync({
