@@ -51,7 +51,7 @@ export class AuthController {
 
     const isValid = await this.authService.isTwoFactorAuthenticationCodeValid(
       code,
-      user
+      user,
     );
 
     if (!isValid) {

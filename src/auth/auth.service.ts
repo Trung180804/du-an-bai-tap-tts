@@ -9,7 +9,7 @@ import { MailerService } from '@nestjs-modules/mailer';
 import * as qrcode from 'qrcode';
 import { Response } from 'express';
 import { generateSecret, verify, generateURI } from "otplib";
-import QRCode from "qrcode"; // npm install qrcode
+import QRCode from "qrcode";
 
 @Injectable()
 export class AuthService {
@@ -41,8 +41,12 @@ export class AuthService {
   async login(email: string, pass: string) {
     const user = await this.userModel.findOne({ email });
     if (user && (await bcrypt.compare(pass, user.password))) {
-      if (!user.isTwoFactorAuthEnabled) {
-        return this.generateJwt(user);
+      if (user.isTwoFactorAuthEnabled) {
+        return {
+          message: '2FA_REQUIRED',
+          userId: user._id,
+          requires2FA: true,
+        };
       }
 
       const payload = {
