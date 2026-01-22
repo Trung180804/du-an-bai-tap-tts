@@ -8,8 +8,9 @@ import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
 import * as qrcode from 'qrcode';
 import { Response } from 'express';
-import * as otplibModule from 'otplib';
-const authenticator = (otplibModule as any).authenticator;
+import { generateSecret, verify, generateURI } from "otplib";
+import QRCode from "qrcode"; // npm install qrcode
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -30,8 +31,6 @@ export class AuthService {
       const newUser = new this.userModel({
         email,
         password: hashedPassword,
-        isTwoFactorAuthEnabled: false,
-        twoFactorAuthSecret: null 
       });
       return await newUser.save();
     } catch (error) {
@@ -42,9 +41,18 @@ export class AuthService {
   async login(email: string, pass: string) {
     const user = await this.userModel.findOne({ email });
     if (user && (await bcrypt.compare(pass, user.password))) {
-      const payload = { sub: user._id, email: user.email };
+      if (!user.isTwoFactorAuthEnabled) {
+        return this.generateJwt(user);
+      }
+
+      const payload = {
+        sub: user._id,
+        isTwoFactorPending: true,
+      };
+
       return {
-        access_token: await this.jwtService.signAsync(payload),
+        message: 'Please enter OTP code',
+        twoFactorToken: await this.jwtService.signAsync(payload, { expiresIn: '5m' }),
       };
     }
     throw new UnauthorizedException('Email or password is false');
@@ -58,25 +66,34 @@ export class AuthService {
     return null;
   }
 
-  async GenerateTwoFactorAuthenticationSecret(user: User) {
-    const secret = authenticator.generateSecret();
-    const otpauthUrl = authenticator.keyuri(
-      user.email,
-      'NWS',
-      secret,
-    );
+  async generateTwoFactorAuthenticationSecret(user: User) {
+    const secret = generateSecret();
 
     user.twoFactorAuthSecret = secret;
     await user.save();
-    return { secret, otpauthUrl };
+
+    const uri = generateURI({
+      issuer: "NWS",
+      label: user.email,
+      secret,
+    });
+    const qrDataUrl = await QRCode.toDataURL(uri);
+
+    return { qrDataUrl };
   }
 
   async pipeQrCodeStream(stream: Response, otpauthUrl: string) {
     return qrcode.toFileStream(stream, otpauthUrl);
   }
 
-  async isTwoFactorAuthenticationCodeValid(twoFactorAuthCode: string, user: User) {
-    return authenticator.verify(twoFactorAuthCode, user.twoFactorAuthSecret);
+  async isTwoFactorAuthenticationCodeValid(
+    twoFactorAuthCode: string,
+    user: User,
+  ) {
+    return verify({
+      token: twoFactorAuthCode,
+      secret: user.twoFactorAuthSecret,
+    });
   }
 
   async forgotPassword(email: string) {
