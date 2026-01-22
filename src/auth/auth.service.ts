@@ -6,6 +6,10 @@ import { User } from 'src/users/user.schema';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
+import * as qrcode from 'qrcode';
+import { Response } from 'express';
+import { generateSecret, verify, generateURI } from "otplib";
+import QRCode from "qrcode";
 
 @Injectable()
 export class AuthService {
@@ -16,63 +20,107 @@ export class AuthService {
   ) {}
 
   async register(email: string, pass: string) {
-    const hashedPassword = await bcrypt.hash(pass, 10);
-    const newUser = new this.userModel({ email, password: hashedPassword });
-    return newUser.save();
+    try {
+      const existingUser = await this.userModel.findOne({ email });
+      if (existingUser) {
+        throw new BadRequestException('Email already exists');
+      }
+
+      const hashedPassword = await bcrypt.hash(pass, 10);
+
+      const newUser = new this.userModel({
+        email,
+        password: hashedPassword,
+      });
+      return await newUser.save();
+    } catch (error) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   async login(email: string, pass: string) {
     const user = await this.userModel.findOne({ email });
     if (user && (await bcrypt.compare(pass, user.password))) {
-      const payload = { sub: user._id, email: user.email };
-      return {
-        access_token: await this.jwtService.signAsync(payload),
+      if (user.isTwoFactorAuthEnabled) {
+        return {
+          message: '2FA_REQUIRED',
+          userId: user._id,
+          requires2FA: true,
+        };
+      }
+
+      const payload = {
+        sub: user._id,
+        isTwoFactorPending: true,
       };
-      throw new UnauthorizedException('Sai email hoac mat khau');
+
+      return {
+        message: 'Please enter OTP code',
+        twoFactorToken: await this.jwtService.signAsync(payload, { expiresIn: '5m' }),
+      };
     }
+    throw new UnauthorizedException('Email or password is false');
+  }
+
+  async validateUser(email: string, pass: string): Promise<User | null> {
+    const user = await this.userModel.findOne({ email });
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      return user;
+    }
+    return null;
+  }
+
+  async generateTwoFactorAuthenticationSecret(user: User) {
+    const secret = generateSecret();
+
+    user.twoFactorAuthSecret = secret;
+    await user.save();
+
+    const uri = generateURI({
+      issuer: "NWS",
+      label: user.email,
+      secret,
+    });
+    const qrDataUrl = await QRCode.toDataURL(uri);
+
+    return { qrDataUrl };
+  }
+
+  async pipeQrCodeStream(stream: Response, otpauthUrl: string) {
+    return qrcode.toFileStream(stream, otpauthUrl);
+  }
+
+  async isTwoFactorAuthenticationCodeValid(
+    twoFactorAuthCode: string,
+    user: User,
+  ) {
+    return verify({
+      token: twoFactorAuthCode,
+      secret: user.twoFactorAuthSecret,
+    });
   }
 
   async forgotPassword(email: string) {
     const user = await this.userModel.findOne({ email });
-    if (!user)
-      throw new BadRequestException('Email khong ton tai tren he thong!');
+    if (!user) throw new BadRequestException('Email do not exist!');
 
-    // Tạo mã xác nhận ngẫu nhiên 6 số
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Lưu mã này vào DB để kiểm tra sau
     user.resetToken = otp;
     await user.save();
 
-    // Gửi mail vào MailHog
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Ma xac nhan thay doi mat khau',
-      html: `<b>Ma xac nhan la: ${otp} <p>Ma co hieu luc trong 5p</p>`,
+      subject: 'OTP Reset Password',
+      html: `<b>OTP is: ${otp} <p>OTP is valid in 5 minutes</p>`,
     });
 
     return { message: '..........................!' };
   }
 
-  /* Code mac dinh cua he thong 
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
+  generateJwt(user: User) {
+    const payload = { sub: user._id, email: user.email };
+    return {
+      access_token: this.jwtService.sign(payload),
+    };
   }
-
-  findAll() {
-    return `This action returns all auth`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
-
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
-  }
-  */
 }

@@ -12,8 +12,8 @@ services:
     image: mailhog/mailhog:latest
     container_name: nest-mailhog
     ports:
-      - 1025:1025 # SMTP server
-      - 8025:8025 # Web UI để xem mail
+      - 1025:1025 
+      - 8025:8025 # Web check mail
 
 volumes:
   mongo-data:
