@@ -1,5 +1,5 @@
 import { TwoFactorAuthDto } from './dto/twoFactorAuth.dto';
-import { Controller, Post, Body, UnauthorizedException, BadRequestException, Request, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, BadRequestException, ForbiddenException, Request, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthRegisterDto } from './dto/authRegister.dto';
 import { AuthForgotPasswordDTO } from './dto/authForgotPassword.dto';
@@ -35,98 +35,41 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '2FA Enable - Verify OTP and turn on 2FA' })
-  async enable2FA(
-    @Request() req, 
-    @Body('twoFactorAuthCode') code: string,
-) {
-    const user = await this.usersService.findOne(req.user.userId);
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    if (!user.twoFactorAuthSecret) {
-      throw new BadRequestException('Please setup 2FA first');
-    }
-
-    const isValid = await this.authService.isTwoFactorAuthenticationCodeValid(
-      code,
-      user,
-    );
-
-    if (!isValid) {
-      throw new BadRequestException('Invalid OTP');
-    }
-
-    user.isTwoFactorAuthEnabled = true;
-    await user.save();
-
-    return { message: '2FA enabled successfully' };
+  async enable2FA(@Request() req, @Body('twoFactorAuthCode') code: string) {
+    return this.authService.enable2FA(req.user.userId, code);
   }
 
   @Post('2fa/setup')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '2FA Setup' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        userId: { type: 'string' },
-      },
-      required: ['userId'],
-    },
-  })
   async setup2FA(@Request() req) {
-    const userId = req.user.userId;
-    const setupUser = await this.usersService.findOne(userId);
-    if (!setupUser) {
-      throw new BadRequestException('User not found');
+    if (req.user.isTwoFactorPending) {
+      throw new ForbiddenException('You must verify 2FA before setting it up');
     }
-
-    const { qrDataUrl } =
-      await this.authService.generateTwoFactorAuthenticationSecret(setupUser);
-
-    return qrDataUrl;
+    return this.authService.setup2FA(req.user.userId);
   }
 
   @Post('2fa/verify')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '2FA Verify' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        twoFactorAuthCode: { type: 'string' },
-      },
-      required: ['twoFactorAuthCode'],
-    },
-  })
-  async verify2FA(
-    @Request() req,
-    @Body('twoFactorAuthCode') code: string,
-  ) {
+  async verify2FA(@Request() req, @Body('twoFactorAuthCode') code: string) {
+    return this.authService.verify2FA(req.user.userId, code);
+  }
 
-    const userId = req.user.userId;
-    const user = await this.usersService.findOne(userId);
-    if (!user) {
-      throw new BadRequestException('User not found');
+  @Post('2fa/disable')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '2FA Disable' })
+  async disable2FA(@Request() req, @Body() dto: TwoFactorAuthDto) {
+    if (req.user.isTwoFactorPending) {
+      throw new ForbiddenException('You must verify 2FA before disabling it');
     }
-
-    const isValid = await this.authService
-      .isTwoFactorAuthenticationCodeValid(code, user);
-
-    if (!isValid) {
-      throw new BadRequestException('Invalid OTP');
+    if (!dto.twoFactorAuthenticationCode) {
+      throw new BadRequestException('Code is required to disable 2FA');
     }
-
-    user.isTwoFactorAuthEnabled = true;
-    await user.save();
-
-    return {
-      message: '2FA enabled successfully',
-      access_token: this.authService.generateJwt(user).access_token };
+    return this.authService.disable2FA(req.user.userId, dto.twoFactorAuthenticationCode);
   }
 
   @Post('forgotPassword')

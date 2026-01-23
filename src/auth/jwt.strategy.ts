@@ -1,3 +1,4 @@
+import { IsNotEmpty } from 'class-validator';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
@@ -14,6 +15,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    return { userId: payload.sub, email: payload.email };
+    if (payload.isTwoFactorPending) {
+      return {
+        userId: payload.sub,
+        email: payload.email,
+        isTwoFactorPending: true,
+      };
+    }
+    return { userId: payload.sub, email: payload.email, isTwoFactorPending: false };
   }
 }

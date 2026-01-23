@@ -44,20 +44,13 @@ export class AuthService {
       if (user.isTwoFactorAuthEnabled) {
         return {
           message: '2FA_REQUIRED',
-          userId: user._id,
-          requires2FA: true,
+          temporary_token: await this.jwtService.signAsync(
+            { sub: user._id, email: user.email, isTwoFactorPending: true },
+            { expiresIn: '5m' },
+          ),
         };
       }
-
-      const payload = {
-        sub: user._id,
-        isTwoFactorPending: true,
-      };
-
-      return {
-        message: 'Please enter OTP code',
-        twoFactorToken: await this.jwtService.signAsync(payload, { expiresIn: '5m' }),
-      };
+      return this.generateJwt(user);
     }
     throw new UnauthorizedException('Email or password is false');
   }
@@ -100,6 +93,70 @@ export class AuthService {
     });
   }
 
+  async setup2FA(userId: string) {
+  const user = await this.userModel.findById(userId);
+  if (!user) throw new BadRequestException('User not found');
+
+  const { qrDataUrl } = await this.generateTwoFactorAuthenticationSecret(user);
+  
+  return qrDataUrl; 
+}
+
+  async enable2FA(userId: string, code: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new BadRequestException('User not found');
+
+    if (!user.twoFactorAuthSecret) {
+      throw new BadRequestException('Please setup 2FA first');
+    }
+
+    const isValid = verify({
+      token: code,
+      secret: user.twoFactorAuthSecret,
+    });
+
+    if (!isValid) {
+      throw new BadRequestException('OTP is invalid');
+    }
+
+    user.isTwoFactorAuthEnabled = true;
+    await user.save();
+
+    return { message: '2FA enabled successfully' };
+  }
+
+  async verify2FA(userId: string, code: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new BadRequestException('User not found');
+
+    const isValid = verify({
+      token: code,
+      secret: user.twoFactorAuthSecret,
+    });
+
+    if (!isValid) throw new BadRequestException('Invalid OTP');
+
+    return this.generateJwt(user);
+  }
+
+  async disable2FA(userId: string, code: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new BadRequestException('User not found');
+    if (!user.isTwoFactorAuthEnabled) throw new BadRequestException('2FA is not enabled');
+
+    const isValid = verify({
+      token: code,
+      secret: user.twoFactorAuthSecret,
+    });
+
+    if (!isValid) throw new BadRequestException('Invalid OTP');
+
+    user.isTwoFactorAuthEnabled = false;
+    user.twoFactorAuthSecret = '';
+    await user.save();
+    return { message: '2FA disabled successfully' };
+  }
+
   async forgotPassword(email: string) {
     const user = await this.userModel.findOne({ email });
     if (!user) throw new BadRequestException('Email do not exist!');
@@ -118,7 +175,11 @@ export class AuthService {
   }
 
   generateJwt(user: User) {
-    const payload = { sub: user._id, email: user.email };
+    const payload = {
+      sub: user._id,
+      email: user.email,
+      isTwoFactorPending: false,
+    };
     return {
       access_token: this.jwtService.sign(payload),
     };
