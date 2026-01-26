@@ -29,4 +29,10 @@ export class UsersService {
     .findByIdAndUpdate(userId, updateData, { new: true })
     .exec();
   }
+
+  async updatePassword(userId: string, hashedPassword: string) {
+    return this.userModel
+      .findByIdAndUpdate(userId, { password: hashedPassword }, { new: true })
+      .exec();
+  }
 }

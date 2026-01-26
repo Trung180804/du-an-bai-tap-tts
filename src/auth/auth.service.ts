@@ -11,6 +11,7 @@ import * as qrcode from 'qrcode';
 import { Response } from 'express';
 import { generateSecret, verify, generateURI } from "otplib";
 import QRCode from "qrcode";
+import { ChangePasswordDto } from './dto/changePassword.dto';
 
 @Injectable()
 export class AuthService {
@@ -106,7 +107,7 @@ export class AuthService {
   }
 
   async enable2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
 
     if (!user.twoFactorAuthSecret) {
@@ -129,7 +130,7 @@ export class AuthService {
   }
 
   async verify2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
 
     const isValid = verify({
@@ -143,7 +144,7 @@ export class AuthService {
   }
 
   async disable2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
     if (!user.isTwoFactorAuthEnabled) throw new BadRequestException('2FA is not enabled');
 
@@ -158,6 +159,37 @@ export class AuthService {
     user.twoFactorAuthSecret = '';
     await user.save();
     return { message: '2FA disabled successfully' };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const { oldPassword, newPassword, confirmNewPassword, twoFactorAuthenticationCode } = dto;
+
+    if (newPassword !== confirmNewPassword) {
+      throw new BadRequestException('New password and confirmation do not match');
+    }
+
+    const user = await this.userModel.findById(userId).select('+password +twoFactorAuthSecret');
+    if (!user) throw new BadRequestException('User not found');
+
+    if (user.isTwoFactorAuthEnabled) {
+      if (!twoFactorAuthenticationCode) {
+        throw new BadRequestException('2FA code is required');
+      }
+      const isValid = verify({
+        token: twoFactorAuthenticationCode,
+        secret: user.twoFactorAuthSecret,
+      });
+      if (!isValid) throw new BadRequestException('Invalid 2FA code');
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.oldPassword, user.password);
+    if (!isPasswordValid) throw new BadRequestException('Old password is incorrect');
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(dto.newPassword, salt);
+    await this.usersService.updatePassword(userId, hashedPassword);
+
+    return { message: 'Password changed successfully' };
   }
 
   async forgotPassword(email: string) {
