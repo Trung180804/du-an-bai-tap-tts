@@ -19,4 +19,8 @@ export class UsersService {
   async findOne(id: string) {
     return this.userModel.findById(id).select('-password');
   }
+
+  async updateProfile(userId: string, data: any) {
+    return this.userModel.findByIdAndUpdate(userId, data, { new: true });
+  }
 }

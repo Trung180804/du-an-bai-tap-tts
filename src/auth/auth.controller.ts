@@ -8,7 +8,6 @@ import { AuthLoginDto } from './dto/authLogin.dto';
 import { UsersService } from '@/users/users.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { access } from 'fs';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -69,7 +68,10 @@ export class AuthController {
     if (!dto.twoFactorAuthenticationCode) {
       throw new BadRequestException('Code is required to disable 2FA');
     }
-    return this.authService.disable2FA(req.user.userId, dto.twoFactorAuthenticationCode);
+    return this.authService.disable2FA(
+      req.user.userId,
+      dto.twoFactorAuthenticationCode,
+    );
   }
 
   @Post('forgotPassword')
