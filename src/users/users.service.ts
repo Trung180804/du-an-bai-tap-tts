@@ -13,10 +13,26 @@ export class UsersService {
   }
 
   async findAll() {
-    return this.userModel.find().select('-password');
+    return this.userModel.find().exec();
   }
 
   async findOne(id: string) {
-    return this.userModel.findById(id).select('-password');
+    return this.userModel.findById(id).exec();
+  }
+
+  async findOneByEmailWithPassword(email: string) {
+    return this.userModel.findOne({ email }).select('+password').exec();
+  }
+
+  async updateProfile(userId: string, updateData: any) {
+    return this.userModel
+    .findByIdAndUpdate(userId, updateData, { new: true })
+    .exec();
+  }
+
+  async updatePassword(userId: string, hashedPassword: string) {
+    return this.userModel
+      .findByIdAndUpdate(userId, { password: hashedPassword }, { new: true })
+      .exec();
   }
 }

@@ -1,5 +1,17 @@
 version: '3.8'
 services:
+  minio:
+    image: minio/minio:latest
+    container_name: nest-minio
+    ports:
+      - 9000:9000
+      - 9001:9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: Trung@123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
   mongodb:
     image: mongo:latest
     container_name: nest-mongodb
@@ -12,8 +24,9 @@ services:
     image: mailhog/mailhog:latest
     container_name: nest-mailhog
     ports:
-      - 1025:1025 # SMTP server
-      - 8025:8025 # Web UI để xem mail
+      - 1025:1025 
+      - 8025:8025 # Web check mail
 
 volumes:
   mongo-data:
+  minio-data:
