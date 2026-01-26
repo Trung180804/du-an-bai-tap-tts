@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Body, UseGuards, 
+  Controller, Get, Patch, Body, UseGuards,
   Request, ForbiddenException, UseInterceptors, UploadedFile 
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -10,8 +10,10 @@ import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/updateUser.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from 'src/minio/minio.service';
+import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private usersService: UsersService, private minioService: MinioService) {}
 
@@ -57,8 +59,22 @@ export class UsersController {
     }
 
     return this.usersService.updateProfile(req.user.userId, {
-      updateDto,
-      avatar: avatarUrl,
+      ...updateDto,
+      ...(avatarUrl && { avatar: avatarUrl }),
     });
+  }
+
+  @Get('profile')
+  async getMyProfile(@Request() req: any) {
+    if(req.user.isTwoFactorPending) {
+      throw new ForbiddenException('2FA verification required');
+    }
+
+    const user = await this.usersService.findOne(req.user.userId);
+    if (!user) {
+      throw new ForbiddenException('User not found');
+    }
+    const { password, twoFactorAuthSecret, ...result } = user.toObject();
+    return result;
   }
 }

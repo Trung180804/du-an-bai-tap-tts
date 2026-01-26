@@ -1,3 +1,4 @@
+import { UsersService } from '@/users/users.service';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { UnauthorizedException } from '@nestjs/common';
@@ -17,6 +18,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<User>,
     private jwtService: JwtService,
     private mailerService: MailerService,
+    private usersService: UsersService,
   ) {}
 
   async register(email: string, pass: string) {
@@ -39,7 +41,7 @@ export class AuthService {
   }
 
   async login(email: string, pass: string) {
-    const user = await this.userModel.findOne({ email });
+    const user = await this.usersService.findOneByEmailWithPassword(email);
     if (user && (await bcrypt.compare(pass, user.password))) {
       if (user.isTwoFactorAuthEnabled) {
         return {
@@ -55,10 +57,11 @@ export class AuthService {
     throw new UnauthorizedException('Email or password is false');
   }
 
-  async validateUser(email: string, pass: string): Promise<User | null> {
-    const user = await this.userModel.findOne({ email });
+  async validateUser(email: string, pass: string): Promise<any> {
+    const user = await this.usersService.findOneByEmailWithPassword(email);
     if (user && (await bcrypt.compare(pass, user.password))) {
-      return user;
+      const { password, ...result } = user.toObject();
+      return result;
     }
     return null;
   }
@@ -94,13 +97,13 @@ export class AuthService {
   }
 
   async setup2FA(userId: string) {
-  const user = await this.userModel.findById(userId);
-  if (!user) throw new BadRequestException('User not found');
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
+    if (!user || !user.twoFactorAuthSecret) throw new BadRequestException('User not found');
 
-  const { qrDataUrl } = await this.generateTwoFactorAuthenticationSecret(user);
-  
-  return qrDataUrl; 
-}
+    const { qrDataUrl } = await this.generateTwoFactorAuthenticationSecret(user);
+
+    return qrDataUrl;
+  }
 
   async enable2FA(userId: string, code: string) {
     const user = await this.userModel.findById(userId);
