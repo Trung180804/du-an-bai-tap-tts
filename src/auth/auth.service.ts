@@ -162,11 +162,7 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
-    const { oldPassword, newPassword, confirmNewPassword, twoFactorAuthenticationCode } = dto;
-
-    if (newPassword !== confirmNewPassword) {
-      throw new BadRequestException('New password and confirmation do not match');
-    }
+    const { oldPassword, newPassword, twoFactorAuthenticationCode } = dto;
 
     const user = await this.userModel.findById(userId).select('+password +twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
@@ -182,11 +178,11 @@ export class AuthService {
       if (!isValid) throw new BadRequestException('Invalid 2FA code');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.oldPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
     if (!isPasswordValid) throw new BadRequestException('Old password is incorrect');
 
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(dto.newPassword, salt);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
     await this.usersService.updatePassword(userId, hashedPassword);
 
     return { message: 'Password changed successfully' };
