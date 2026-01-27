@@ -1,32 +1,20 @@
-version: '3.8'
-services:
-  minio:
-    image: minio/minio:latest
-    container_name: nest-minio
-    ports:
-      - 9000:9000
-      - 9001:9001
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: Trung@123
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio-data:/data
-  mongodb:
-    image: mongo:latest
-    container_name: nest-mongodb
-    ports:
-      - 27017:27017
-    volumes:
-      - mongo-data:/data/db
+import { NestFactory } from '@nestjs/core';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { AppModule } from './app.module';
 
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: nest-mailhog
-    ports:
-      - 1025:1025 
-      - 8025:8025 # Web check mail
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
 
-volumes:
-  mongo-data:
-  minio-data:
+  const config = new DocumentBuilder()
+    .setTitle('Project Test API')
+    .setDescription('Toi la Trung')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+  // ------------------------------------------
+
+  await app.listen(3000);
+}
+bootstrap();
