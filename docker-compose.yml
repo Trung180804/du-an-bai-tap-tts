@@ -1,20 +1,19 @@
-import { NestFactory } from '@nestjs/core';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { AppModule } from './app.module';
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: nest-mongodb
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo-data:/data/db
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: nest-mailhog
+    ports:
+      - 1025:1025 # SMTP server
+      - 8025:8025 # Web UI để xem mail
 
-  const config = new DocumentBuilder()
-    .setTitle('Project Test API')
-    .setDescription('Toi la Trung')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
-  // ------------------------------------------
-
-  await app.listen(3000);
-}
-bootstrap();
+volumes:
+  mongo-data:
