@@ -18,6 +18,16 @@ export class PostsController {
     return this.postsService.getFeed(req.user.userId, query);
   }
 
+  @Get('myLiked')
+  async getMyLiked(@Req() req) {
+    return this.postsService.getMyLikedPosts(req.user.userId);
+  }
+
+  @Get('myCommented')
+  async getMyCommented(@Req() req) {
+    return this.postsService.getMyCommentedPosts(req.user.userId);
+  }
+
   @Put(':id')
   async update(
     @Req() req,
@@ -45,4 +55,15 @@ export class PostsController {
   ) {
     return this.postsService.addComment(postId, req.user.userId, body.content, body.imageUrl);
   }
+
+  @Get(':id/comments')
+  async getComments(@Param('id') id: string) {
+    return this.postsService.checkCommentsForPost(id);
+  }
+  /* --use debug/fix two comment latest--
+  @Post(':id/recount-comments')
+  async recount(@Param('id') id: string) {
+    return this.postsService.recountComments(id);
+  }
+    */
 }

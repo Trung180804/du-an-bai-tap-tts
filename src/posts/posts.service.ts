@@ -97,7 +97,16 @@ export class PostsService {
           from: 'comments',
           let: { postId: '$_id' },
           pipeline: [
-            { $match: { $expr: { $eq: ['$post', '$$postId'] } } },
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                  { $eq: [{ $toString: '$post' }, { $toString: '$$postId' }] },
+                    { $eq: ['$isDeleted', false] },
+                  ],
+                },
+              },
+            },
             { $sort: { createdAt: -1 } },
             { $limit: 2 },
             {
@@ -108,7 +117,7 @@ export class PostsService {
                 as: 'commenter',
               },
             },
-            { $unwind: '$commenter' },
+            { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } }
           ],
           as: 'latestComments',
         },
@@ -145,15 +154,33 @@ export class PostsService {
     ]);
   }
 
+  async checkCommentsForPost(postId: string) {
+    const comments = await this.commentModel.find({ post: new Types.ObjectId(postId) }).sort({ createdAt: -1 }).limit(2);
+    console.log('Comments found:', comments);
+    return comments;
+  }
+
+  async recountComments(postId: string) {
+    const count = await this.commentModel.countDocuments({ post: new Types.ObjectId(postId) }); 
+    await this.postModel.findByIdAndUpdate(postId, { commentsCount: count });
+    return count;
+  }
+
   async toggleLike(postId: string, userId: string) {
-    const existingLike = await this.likeModel.findOne({ post: postId, user: userId });
+    const existingLike = await this.likeModel.findOne({
+      post: new Types.ObjectId(postId),
+      user: new Types.ObjectId(userId),
+    });
 
     if (existingLike) {
-      await this.likeModel.deleteOne({ _id: existingLike._id }); // Dùng deleteOne
+      await this.likeModel.deleteOne({ _id: existingLike._id });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } });
       return { liked: false };
     } else {
-      await this.likeModel.create({ post: postId, user: userId });
+      await this.likeModel.create({
+        post: new Types.ObjectId(postId),
+        user: new Types.ObjectId(userId),
+      });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { likesCount: 1 } });
       return { liked: true };
     }
@@ -164,16 +191,21 @@ export class PostsService {
     if (!post || post.isDeleted) {
       throw new NotFoundException('Post not found');
     }
-
-    const newComment = await this.commentModel.create({
-      content,
-      post: postId,
-      user: userId,
-      ...(imageUrl && { imageUrl }),
-    });
-
-    await this.postModel.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } });
-    return newComment;
+    try {
+      const newComment = await this.commentModel.create({
+        content,
+        post: new Types.ObjectId(postId),
+        user: new Types.ObjectId(userId),
+        ...(imageUrl && { imageUrl }),
+        isDeleted: false,
+      });
+      console.log('Saved new comment:', newComment);
+      await this.postModel.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } });
+      return newComment;
+    } catch (error) {
+      console.error('Error', error.message, error.stack);
+      throw new NotFoundException('Failed to add comment');
+    }
   }
 
   private getSortCondition(mode?: string): any {
@@ -200,7 +232,8 @@ export class PostsService {
   }
 
   async getMyLikedPosts(userId: string) {
-    return this.likeModel.aggregate([
+    console.log(" UserID đang truy vấn: ", userId);
+    const result = await this.likeModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
       {
         $lookup: {
@@ -214,6 +247,8 @@ export class PostsService {
       { $match: { 'postInfo.isDeleted': false } },
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
+    console.log("Kết quả tìm được: ", result.length);
+    return result;
   }
 
   async getMyCommentedPosts(userId: string) {
@@ -229,7 +264,13 @@ export class PostsService {
       },
       { $unwind: '$postInfo' },
       { $match: { 'postInfo.isDeleted': false } },
-      { $sort: { lastCommentedAt: -1 } },
+      {
+        $group: {
+          _id: '$postInfo._id',
+          postData: { $first: '$postInfo' },
+        },
+      },
+      { $replaceRoot: { newRoot: '$postData' } },
     ]);
   }
 }
