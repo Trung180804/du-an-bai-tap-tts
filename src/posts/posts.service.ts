@@ -78,9 +78,8 @@ export class PostsService {
   async getFeed(userId: string, query: FeedDto) {
     const { mode = 'newest', page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
-    const now = new Date();
 
-    let timeLimit = new Date(0); // default to epoch start
+    let timeLimit = new Date(0);
     if (mode === 'most_interacted_today') {
       timeLimit = dayjs().startOf('day').toDate();
     } else if (mode === 'most_interacted_week') {
@@ -118,7 +117,7 @@ export class PostsService {
               $match: {
                 $expr: {
                   $and: [
-                  { $eq: [{ $toString: '$post' }, { $toString: '$$postId' }] },
+                    { $eq:['$post','$$postId']},
                     { $eq: ['$isDeleted', false] },
                   ],
                 },
@@ -134,7 +133,16 @@ export class PostsService {
                 as: 'commenter',
               },
             },
-            { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } }
+            { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } },
+            {
+              $project: {
+                content: 1,
+                createdAt: 1,
+                "commenter._id": 1,
+                "commenter.name": 1,
+                "commenter.avatar": 1,
+              },
+            },
           ],
           as: 'latestComments',
         },
@@ -163,11 +171,24 @@ export class PostsService {
           isLikedByCurrentUser: { $gt: [{ $size: '$likedData' }, 0] },
         },
       },
+      {
+        $project: {
+          _id: 1, title: 1, content: 1, author: 1, likesCount: 1,
+          commentsCount: 1, imageUrl: 1, isDeleted: 1, createdAt: 1,
+          updatedAt: 1, interactionScore: 1, lastActivity: 1,
+          isLikedByCurrentUser: 1,
+          latestComments: 1,
 
+          "authorInfo._id": 1,
+          "authorInfo.email": 1,
+          "authorInfo.address": 1,
+          "authorInfo.avatar": 1,
+          "authorInfo.name": 1,
+        },
+      },
       { $sort: this.getSortCondition(mode) },
       { $skip: skip },
       { $limit: limit },
-      { $project: { likedData: 0 } },
     ]);
   }
 
