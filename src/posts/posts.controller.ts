@@ -9,8 +9,17 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
-  async create(@Req() req, @Body() body: { content: string; title: string; imageUrl?: string }) {
-    return this.postsService.createPost(req.user.userId, body.content, body.title, body.imageUrl);
+  async create(@Req() req, @Body() body: { content: string; title: string; imageUrl?: string; createdAt?: Date;
+    likesCount?: number;
+    commentsCount?: number }) {
+    return this.postsService.createPost(req.user.userId,
+      body.content,
+      body.title,
+      body.imageUrl,
+      body.createdAt,
+      body.likesCount,
+      body.commentsCount,
+    );
   }
 
   @Get('feed')

@@ -17,20 +17,37 @@ export class PostsService {
     @InjectModel(User.name) private userModel: Model<User>,
   ) {}
 
-  async createPost(userId: string, content: string, title: string, imageUrl?: string) {
+  async createPost(
+    userId: string,
+    content: string,
+    title: string,
+    imageUrl?: string,
+    createdAt?: Date,
+    // Create to test post interaction (day, week, month)
+    likesCount?: number,
+    commentsCount?: number,
+  ) {
     const newPost = new this.postModel({
       title: title || "Trungggg",
       content: content,
-      author: new Types.ObjectId(userId),
       imageUrl: imageUrl,
+      author: new Types.ObjectId(userId),
+      createdAt: createdAt || new Date(),
       isDeleted: false,
-      likesCount: 0,
-      commentsCount: 0,
+      // Create to test post interaction (day, week, month)
+      likesCount: likesCount || 0,
+      commentsCount: commentsCount || 0,
     });
     return newPost.save();
   }
 
-  async updatePost(postId: string, userId: string, content: string, title: string, imageUrl?: string) {
+  async updatePost(
+    postId: string,
+    userId: string,
+    content: string,
+    title: string,
+    imageUrl?: string,
+    createdAt?: Date) {
     console.log("Đang tìm Post với ID:", postId);
     console.log("Của User ID:", userId);
     const post = await this.postModel.findOne({_id: new Types.ObjectId(postId), isDeleted: { $ne: true } });
@@ -40,7 +57,7 @@ export class PostsService {
     if (post.author.toString() !== userId.toString().trim()) {
       throw new NotFoundException('You are not the author of this post');
     }
-    return this.postModel.findByIdAndUpdate(postId, { content, title, imageUrl }, { new: true });
+    return this.postModel.findByIdAndUpdate(postId, { content, title, imageUrl, createdAt }, { new: true });
   }
 
   async deletePost(postId: string, userId: string) {
