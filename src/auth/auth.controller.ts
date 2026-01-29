@@ -1,5 +1,5 @@
 import { TwoFactorAuthDto } from './dto/twoFactorAuth.dto';
-import { Controller, Post, Body, UnauthorizedException, BadRequestException, ForbiddenException, Request, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException, BadRequestException, ForbiddenException, Request, UseGuards, Patch } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthRegisterDto } from './dto/authRegister.dto';
 import { AuthForgotPasswordDTO } from './dto/authForgotPassword.dto';
@@ -8,7 +8,7 @@ import { AuthLoginDto } from './dto/authLogin.dto';
 import { UsersService } from '@/users/users.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { access } from 'fs';
+import { ChangePasswordDto } from './dto/changePassword.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -69,7 +69,18 @@ export class AuthController {
     if (!dto.twoFactorAuthenticationCode) {
       throw new BadRequestException('Code is required to disable 2FA');
     }
-    return this.authService.disable2FA(req.user.userId, dto.twoFactorAuthenticationCode);
+    return this.authService.disable2FA(
+      req.user.userId,
+      dto.twoFactorAuthenticationCode,
+    );
+  }
+
+  @Patch('changePassword')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change Password' })
+  async changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.userId, dto);
   }
 
   @Post('forgotPassword')

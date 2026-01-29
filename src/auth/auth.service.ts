@@ -1,3 +1,4 @@
+import { UsersService } from '@/users/users.service';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { UnauthorizedException } from '@nestjs/common';
@@ -10,6 +11,7 @@ import * as qrcode from 'qrcode';
 import { Response } from 'express';
 import { generateSecret, verify, generateURI } from "otplib";
 import QRCode from "qrcode";
+import { ChangePasswordDto } from './dto/changePassword.dto';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +19,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<User>,
     private jwtService: JwtService,
     private mailerService: MailerService,
+    private usersService: UsersService,
   ) {}
 
   async register(email: string, pass: string) {
@@ -39,7 +42,7 @@ export class AuthService {
   }
 
   async login(email: string, pass: string) {
-    const user = await this.userModel.findOne({ email });
+    const user = await this.usersService.findOneByEmailWithPassword(email);
     if (user && (await bcrypt.compare(pass, user.password))) {
       if (user.isTwoFactorAuthEnabled) {
         return {
@@ -55,10 +58,11 @@ export class AuthService {
     throw new UnauthorizedException('Email or password is false');
   }
 
-  async validateUser(email: string, pass: string): Promise<User | null> {
-    const user = await this.userModel.findOne({ email });
+  async validateUser(email: string, pass: string): Promise<any> {
+    const user = await this.usersService.findOneByEmailWithPassword(email);
     if (user && (await bcrypt.compare(pass, user.password))) {
-      return user;
+      const { password, ...result } = user.toObject();
+      return result;
     }
     return null;
   }
@@ -94,16 +98,16 @@ export class AuthService {
   }
 
   async setup2FA(userId: string) {
-  const user = await this.userModel.findById(userId);
-  if (!user) throw new BadRequestException('User not found');
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
+    if (!user || !user.twoFactorAuthSecret) throw new BadRequestException('User not found');
 
-  const { qrDataUrl } = await this.generateTwoFactorAuthenticationSecret(user);
-  
-  return qrDataUrl; 
-}
+    const { qrDataUrl } = await this.generateTwoFactorAuthenticationSecret(user);
+
+    return qrDataUrl;
+  }
 
   async enable2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
 
     if (!user.twoFactorAuthSecret) {
@@ -126,7 +130,7 @@ export class AuthService {
   }
 
   async verify2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
 
     const isValid = verify({
@@ -140,7 +144,7 @@ export class AuthService {
   }
 
   async disable2FA(userId: string, code: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId).select('+twoFactorAuthSecret');
     if (!user) throw new BadRequestException('User not found');
     if (!user.isTwoFactorAuthEnabled) throw new BadRequestException('2FA is not enabled');
 
@@ -155,6 +159,33 @@ export class AuthService {
     user.twoFactorAuthSecret = '';
     await user.save();
     return { message: '2FA disabled successfully' };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const { oldPassword, newPassword, twoFactorAuthenticationCode } = dto;
+
+    const user = await this.userModel.findById(userId).select('+password +twoFactorAuthSecret');
+    if (!user) throw new BadRequestException('User not found');
+
+    if (user.isTwoFactorAuthEnabled) {
+      if (!twoFactorAuthenticationCode) {
+        throw new BadRequestException('2FA code is required');
+      }
+      const isValid = verify({
+        token: twoFactorAuthenticationCode,
+        secret: user.twoFactorAuthSecret,
+      });
+      if (!isValid) throw new BadRequestException('Invalid 2FA code');
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isPasswordValid) throw new BadRequestException('Old password is incorrect');
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    await this.usersService.updatePassword(userId, hashedPassword);
+
+    return { message: 'Password changed successfully' };
   }
 
   async forgotPassword(email: string) {
