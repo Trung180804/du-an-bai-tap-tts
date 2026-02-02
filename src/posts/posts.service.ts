@@ -8,7 +8,6 @@ import { Comment } from './comment.schema';
 import { User } from '@/users/user.schema';
 import { FeedDto } from './dto/feed.dto';
 import { metadata } from 'reflect-metadata/no-conflict';
-
 @Injectable()
 export class PostsService {
   constructor(
@@ -17,7 +16,6 @@ export class PostsService {
     @InjectModel(Comment.name) private commentModel: Model<Comment>,
     @InjectModel(User.name) private userModel: Model<User>,
   ) {}
-
   async createPost(
     userId: string,
     content: string,
@@ -41,7 +39,6 @@ export class PostsService {
     });
     return newPost.save();
   }
-
   async updatePost(
     postId: string,
     userId: string,
@@ -60,7 +57,6 @@ export class PostsService {
     }
     return this.postModel.findByIdAndUpdate(postId, { content, title, imageUrl, createdAt }, { new: true });
   }
-
   async deletePost(postId: string, userId: string) {
     const post = await this.postModel.findById(postId);
     if (!post || post.isDeleted) {
@@ -75,51 +71,47 @@ export class PostsService {
       { new: true },
     );
   }
-
   async getFeed(userId: string, query: FeedDto) {
     const { mode = 'newest', page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
-
     let timeLimit = new Date(0);
     switch (mode) {
       case 'most_interacted_today':
         timeLimit = dayjs().startOf('day').toDate();
         break;
-
       case 'most_interacted_week':
         timeLimit = dayjs().subtract(7, 'day').toDate();
         break;
-
       case 'most_interacted_month':
         timeLimit = dayjs().subtract(30, 'day').toDate();
         break;
     }
-
+    const filter = {
+      isDeleted: { $ne: true },
+      createdAt: { $gte: timeLimit },
+    };
     const result = await this.postModel.aggregate([
-      { $match: { isDeleted: false, createdAt: { $gte: timeLimit } } },
+      { $match: filter },
+      {
+        $addFields: {
+          interactionScore: { $add: ['$likesCount', '$commentsCount'] },
+          lastActivity: { $ifNull: ['$updatedAt', '$createdAt'] },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'author',
+          foreignField: '_id',
+          as: 'authorInfo',
+        },
+      },
+      { $match: { authorInfo: { $ne: [] } } },
       {
         $facet: {
           metadata: [{$count: 'total' }],
-
           data: [
-            {
-              $addFields: {
-                interactionScore: { $add: ['$likesCount', '$commentsCount'] },
-                lastActivity: { $ifNull: ['$updatedAt', '$createdAt'] },
-              },
-            },
-            // info author
-            {
-              $lookup: {
-                from: 'users',
-                localField: 'author',
-                foreignField: '_id',
-                as: 'authorInfo',
-              },
-            },
             { $unwind: '$authorInfo' },
-
-            // take new comments
             {
               $lookup: {
                 from: 'comments',
@@ -130,7 +122,7 @@ export class PostsService {
                       $expr: {
                         $and: [
                           { $eq:['$post','$$postId']},
-                          { $eq: ['$isDeleted', false] },
+                          { $ne: ['$isDeleted', true] },
                         ],
                       },
                     },
@@ -169,10 +161,10 @@ export class PostsService {
                         $and: [
                           { $eq: ['$post', '$$postId'] },
                           { $eq: ['$user', typeof userId === 'string' ? new Types.ObjectId(userId) : userId] },
-                            ],
-                          },
-                        },
+                        ],
                       },
+                    },
+                  },
                 ],
                 as: 'likedData',
               },
@@ -189,7 +181,6 @@ export class PostsService {
                 updatedAt: 1, interactionScore: 1, lastActivity: 1,
                 isLikedByCurrentUser: 1,
                 latestComments: 1,
-
                "authorInfo.avatar": 1,
                "authorInfo.name": 1,
               },
@@ -201,14 +192,12 @@ export class PostsService {
         },
       },
     ]);
-
     const data = result[0].data;
     const totalItems = result[0].metadata[0]?.total || 0;
     const totalPages = Math.ceil(totalItems / limit);
     if (page > totalPages && (totalItems > 0 || page < 1)) {
       // if you want to go back to the recent page
       return this.getFeed(userId, { ...query, page: totalPages });
-
       // if you want to error message
       //throw new NotFoundException(`Page ${page} does not exist. Now there are only ${totalPages} pages.`);
     }
@@ -223,25 +212,21 @@ export class PostsService {
       },
     };
   }
-
   async checkCommentsForPost(postId: string) {
     const comments = await this.commentModel.find({ post: new Types.ObjectId(postId) }).sort({ createdAt: -1 }).limit(2);
     console.log('Comments found:', comments);
     return comments;
   }
-
   async recountComments(postId: string) {
-    const count = await this.commentModel.countDocuments({ post: new Types.ObjectId(postId) }); 
+    const count = await this.commentModel.countDocuments({ post: new Types.ObjectId(postId) });
     await this.postModel.findByIdAndUpdate(postId, { commentsCount: count });
     return count;
   }
-
   async toggleLike(postId: string, userId: string) {
     const existingLike = await this.likeModel.findOne({
       post: new Types.ObjectId(postId),
       user: new Types.ObjectId(userId),
     });
-
     if (existingLike) {
       await this.likeModel.deleteOne({ _id: existingLike._id });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } });
@@ -255,7 +240,6 @@ export class PostsService {
       return { liked: true };
     }
   }
-
   async addComment(postId: string, userId: string, content: string, imageUrl?: string) {
     const post = await this.postModel.findById(postId);
     if (!post || post.isDeleted) {
@@ -277,7 +261,6 @@ export class PostsService {
       throw new NotFoundException('Failed to add comment');
     }
   }
-
   private getSortCondition(mode?: string): any {
     switch (mode) {
       // post newest
@@ -295,12 +278,10 @@ export class PostsService {
       case 'most_interacted_week':
       case 'most_interacted_month':
         return { interactionScore: -1, createdAt: -1 };
-
       default:
         return { createdAt: -1 as const };
     }
   }
-
   async getMyLikedPosts(userId: string) {
     console.log(" UserID is querying: ", userId);
     const result = await this.likeModel.aggregate([
@@ -314,13 +295,12 @@ export class PostsService {
         },
       },
       { $unwind: '$postInfo' },
-      { $match: { 'postInfo.isDeleted': false } },
+      { $match: { 'postInfo.isDeleted': { $ne: true } } },
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
     console.log("Result: ", result.length);
     return result;
   }
-
   async getMyCommentedPosts(userId: string) {
     return this.commentModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
@@ -333,7 +313,7 @@ export class PostsService {
         },
       },
       { $unwind: '$postInfo' },
-      { $match: { 'postInfo.isDeleted': false } },
+      { $match: { 'postInfo.isDeleted': { $ne: true } } },
       {
         $group: {
           _id: '$postInfo._id',
@@ -343,37 +323,33 @@ export class PostsService {
       { $replaceRoot: { newRoot: '$postData' } },
     ]);
   }
-
   async seedData(userId: string) {
     const posts: any[] = [];
     const comments: any[] = [];
-    const dayjs = 24 * 60 * 60 * 1000;
+    const dayMs = 24 * 60 * 60 * 1000;
     const dates = [
       new Date(),
-      new Date(Date.now() - 3* dayjs),
-      new Date(Date.now() - 10* dayjs),
-      new Date(Date.now() - 45* dayjs),
+      new Date(Date.now() - 3 * dayMs),
+      new Date(Date.now() - 10 * dayMs),
+      new Date(Date.now() - 45 * dayMs),
     ];
-
     for (let i = 1; i <= 100; i++) {
       const currentPostId = new Types.ObjectId();
       const randomDate = dates[Math.floor(Math.random() * dates.length)];
+      const randomLikes = Math.floor(Math.random() * 500);
+      const randomComments = Math.floor(Math.random() * 200);
       posts.push({
         _id: currentPostId,
         title: `Post number ${i}`,
         content: `I am Trung and I am number ${i}`,
         author: new Types.ObjectId(userId),
-        likesCount: Math.floor(Math.random() * 500),
-        commentsCount: 2,
-        /* If you want to display a random number of comments
-        commentsCount: Math.floor(Math.random() * 200),
-        */
+        likesCount: randomLikes,
+        commentsCount: randomComments,
         isDeleted: false,
         createdAt: randomDate,
         updatedAt: randomDate,
       });
-
-      for (let j = 1; j <= 2; j++) {
+      for (let j = 1; j <= randomComments; j++) {
         comments.push({
           content: `Comment number ${j} belong to post ${i}`,
           post: currentPostId,
