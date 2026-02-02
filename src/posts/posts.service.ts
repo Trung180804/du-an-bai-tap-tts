@@ -7,6 +7,7 @@ import { Like } from './like.schema';
 import { Comment } from './comment.schema';
 import { User } from '@/users/user.schema';
 import { FeedDto } from './dto/feed.dto';
+import { metadata } from 'reflect-metadata/no-conflict';
 
 @Injectable()
 export class PostsService {
@@ -80,113 +81,147 @@ export class PostsService {
     const skip = (page - 1) * limit;
 
     let timeLimit = new Date(0);
-    if (mode === 'most_interacted_today') {
-      timeLimit = dayjs().startOf('day').toDate();
-    } else if (mode === 'most_interacted_week') {
-      timeLimit = dayjs().subtract(7, 'day').toDate();
-    } else if (mode === 'most_interacted_month') {
-      timeLimit = dayjs().subtract(30, 'day').toDate();
+    switch (mode) {
+      case 'most_interacted_today':
+        timeLimit = dayjs().startOf('day').toDate();
+        break;
+
+      case 'most_interacted_week':
+        timeLimit = dayjs().subtract(7, 'day').toDate();
+        break;
+
+      case 'most_interacted_month':
+        timeLimit = dayjs().subtract(30, 'day').toDate();
+        break;
     }
 
-    return this.postModel.aggregate([
+    const result = await this.postModel.aggregate([
       { $match: { isDeleted: false, createdAt: { $gte: timeLimit } } },
       {
-        $addFields: {
-          interactionScore: { $add: ['$likesCount', '$commentsCount'] },
-          lastActivity: { $ifNull: ['$updatedAt', '$createdAt'] },
-        },
-      },
-      // info author
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'author',
-          foreignField: '_id',
-          as: 'authorInfo',
-        },
-      },
-      { $unwind: '$authorInfo' },
+        $facet: {
+          metadata: [{$count: 'total' }],
 
-      // take new comments
-      {
-        $lookup: {
-          from: 'comments',
-          let: { postId: '$_id' },
-          pipeline: [
+          data: [
             {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq:['$post','$$postId']},
-                    { $eq: ['$isDeleted', false] },
-                  ],
-                },
+              $addFields: {
+                interactionScore: { $add: ['$likesCount', '$commentsCount'] },
+                lastActivity: { $ifNull: ['$updatedAt', '$createdAt'] },
               },
             },
-            { $sort: { createdAt: -1 } },
-            { $limit: 2 },
+            // info author
             {
               $lookup: {
                 from: 'users',
-                localField: 'user',
+                localField: 'author',
                 foreignField: '_id',
-                as: 'commenter',
+                as: 'authorInfo',
               },
             },
-            { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } },
+            { $unwind: '$authorInfo' },
+
+            // take new comments
+            {
+              $lookup: {
+                from: 'comments',
+                let: { postId: '$_id' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq:['$post','$$postId']},
+                          { $eq: ['$isDeleted', false] },
+                        ],
+                      },
+                    },
+                  },
+                  { $sort: { createdAt: -1 } },
+                  { $limit: 2 },
+                  {
+                    $lookup: {
+                      from: 'users',
+                      localField: 'user',
+                      foreignField: '_id',
+                      as: 'commenter',
+                    },
+                  },
+                  { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } },
+                  {
+                    $project: {
+                      content: 1,
+                      createdAt: 1,
+                      "commenter.name": 1,
+                      "commenter.avatar": 1,
+                    },
+                  },
+                ],
+                as: 'latestComments',
+              },
+            },
+            {
+              $lookup: {
+                from: 'likes',
+                let: { postId: '$_id' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ['$post', '$$postId'] },
+                          { $eq: ['$user', typeof userId === 'string' ? new Types.ObjectId(userId) : userId] },
+                            ],
+                          },
+                        },
+                      },
+                ],
+                as: 'likedData',
+              },
+            },
+            {
+              $addFields: {
+                isLikedByCurrentUser: { $gt: [{ $size: '$likedData' }, 0] },
+              },
+            },
             {
               $project: {
-                content: 1,
-                createdAt: 1,
-                "commenter.name": 1,
-                "commenter.avatar": 1,
-              },
-            },
-          ],
-          as: 'latestComments',
-        },
-      },
-      {
-        $lookup: {
-          from: 'likes',
-          let: { postId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$post', '$$postId'] },
-                    { $eq: ['$user', typeof userId === 'string' ? new Types.ObjectId(userId) : userId] },
-                  ],
-                },
-              },
-            },
-          ],
-          as: 'likedData',
-        },
-      },
-      {
-        $addFields: {
-          isLikedByCurrentUser: { $gt: [{ $size: '$likedData' }, 0] },
-        },
-      },
-      {
-        $project: {
-          _id: 1, title: 1, content: 1, author: 1, likesCount: 1,
-          email: 1, address: 1,
-          commentsCount: 1, imageUrl: 1, isDeleted: 1, createdAt: 1,
-          updatedAt: 1, interactionScore: 1, lastActivity: 1,
-          isLikedByCurrentUser: 1,
-          latestComments: 1,
+                _id: 1, title: 1, content: 1, author: 1, likesCount: 1,
+                commentsCount: 1, imageUrl: 1, isDeleted: 1, createdAt: 1,
+                updatedAt: 1, interactionScore: 1, lastActivity: 1,
+                isLikedByCurrentUser: 1,
+                latestComments: 1,
 
-          "authorInfo.avatar": 1,
-          "authorInfo.name": 1,
+               "authorInfo.avatar": 1,
+               "authorInfo.name": 1,
+              },
+            },
+            { $sort: this.getSortCondition(mode) },
+            { $skip: skip },
+            { $limit: Number(limit) },
+          ],
         },
       },
-      { $sort: this.getSortCondition(mode) },
-      { $skip: skip },
-      { $limit: limit },
     ]);
+
+    const data = result[0].data;
+    const totalItems = result[0].metadata[0]?.total || 0;
+    const totalPages = Math.ceil(totalItems / limit);
+    if (page > totalPages && (totalItems > 0 || page < 1)) {
+      // if you want to go back to the recent page
+      return this.getFeed(userId, { ...query, page: totalPages });
+
+      // if you want to error message
+      //throw new NotFoundException(`Page ${page} does not exist. Now there are only ${totalPages} pages.`);
+    }
+    return {
+      data: data,
+      meta: {
+        totalItems,
+        itemCount: data.length,
+        itemsPerPage: Number(limit),
+        totalPages,
+        currentPage: Number(page),
+      },
+    };
   }
 
   async checkCommentsForPost(postId: string) {
@@ -312,12 +347,12 @@ export class PostsService {
   async seedData(userId: string) {
     const posts: any[] = [];
     const comments: any[] = [];
-    const day = 24 * 60 * 60 * 1000;
+    const dayjs = 24 * 60 * 60 * 1000;
     const dates = [
       new Date(),
-      new Date(Date.now() - 3* day),
-      new Date(Date.now() - 10* day),
-      new Date(Date.now() - 45* day),
+      new Date(Date.now() - 3* dayjs),
+      new Date(Date.now() - 10* dayjs),
+      new Date(Date.now() - 45* dayjs),
     ];
 
     for (let i = 1; i <= 100; i++) {
