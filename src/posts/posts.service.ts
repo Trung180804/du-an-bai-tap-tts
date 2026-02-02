@@ -138,7 +138,6 @@ export class PostsService {
               $project: {
                 content: 1,
                 createdAt: 1,
-                "commenter._id": 1,
                 "commenter.name": 1,
                 "commenter.avatar": 1,
               },
@@ -174,14 +173,12 @@ export class PostsService {
       {
         $project: {
           _id: 1, title: 1, content: 1, author: 1, likesCount: 1,
+          email: 1, address: 1,
           commentsCount: 1, imageUrl: 1, isDeleted: 1, createdAt: 1,
           updatedAt: 1, interactionScore: 1, lastActivity: 1,
           isLikedByCurrentUser: 1,
           latestComments: 1,
 
-          "authorInfo._id": 1,
-          "authorInfo.email": 1,
-          "authorInfo.address": 1,
           "authorInfo.avatar": 1,
           "authorInfo.name": 1,
         },
@@ -270,7 +267,7 @@ export class PostsService {
   }
 
   async getMyLikedPosts(userId: string) {
-    console.log(" UserID đang truy vấn: ", userId);
+    console.log(" UserID is querying: ", userId);
     const result = await this.likeModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
       {
@@ -285,7 +282,7 @@ export class PostsService {
       { $match: { 'postInfo.isDeleted': false } },
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
-    console.log("Kết quả tìm được: ", result.length);
+    console.log("Result: ", result.length);
     return result;
   }
 
@@ -310,5 +307,49 @@ export class PostsService {
       },
       { $replaceRoot: { newRoot: '$postData' } },
     ]);
+  }
+
+  async seedData(userId: string) {
+    const posts: any[] = [];
+    const comments: any[] = [];
+    const day = 24 * 60 * 60 * 1000;
+    const dates = [
+      new Date(),
+      new Date(Date.now() - 3* day),
+      new Date(Date.now() - 10* day),
+      new Date(Date.now() - 45* day),
+    ];
+
+    for (let i = 1; i <= 100; i++) {
+      const currentPostId = new Types.ObjectId();
+      const randomDate = dates[Math.floor(Math.random() * dates.length)];
+      posts.push({
+        _id: currentPostId,
+        title: `Post number ${i}`,
+        content: `I am Trung and I am number ${i}`,
+        author: new Types.ObjectId(userId),
+        likesCount: Math.floor(Math.random() * 500),
+        commentsCount: 2,
+        /* If you want to display a random number of comments
+        commentsCount: Math.floor(Math.random() * 200),
+        */
+        isDeleted: false,
+        createdAt: randomDate,
+        updatedAt: randomDate,
+      });
+
+      for (let j = 1; j <= 2; j++) {
+        comments.push({
+          content: `Comment number ${j} belong to post ${i}`,
+          post: currentPostId,
+          user: new Types.ObjectId(userId),
+          isDeleted: false,
+          createdAt: new Date(randomDate.getTime() + j * 1000),
+        });
+      }
+    }
+    await this.postModel.insertMany(posts);
+    await this.commentModel.insertMany(comments);
+    return { message: `----- Congragulations ----` };
   }
 }

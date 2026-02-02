@@ -37,6 +37,11 @@ export class PostsController {
     return this.postsService.getMyCommentedPosts(req.user.userId);
   }
 
+  @Post('seed')
+  async seed(@Req() req) {
+    return this.postsService.seedData(req.user.userId);
+  }
+
   @Put(':id')
   async update(
     @Req() req,
