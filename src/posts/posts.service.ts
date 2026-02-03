@@ -1,3 +1,5 @@
+import { RedisService } from './../redis/redis.service';
+import { RedisClient } from './../../node_modules/ioredis/built/connectors/SentinelConnector/types.d';
 import dayjs from 'dayjs';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -15,6 +17,8 @@ export class PostsService {
     @InjectModel(Like.name) private likeModel: Model<Like>,
     @InjectModel(Comment.name) private commentModel: Model<Comment>,
     @InjectModel(User.name) private userModel: Model<User>,
+
+    private readonly redisService: RedisService,
   ) {}
   async createPost(
     userId: string,
@@ -283,7 +287,11 @@ export class PostsService {
     }
   }
   async getMyLikedPosts(userId: string) {
-    console.log(" UserID is querying: ", userId);
+    const cacheKey = `user_liked_posts:${userId}`;
+    const cachedPosts = await this.redisService.getCache(cacheKey);
+    if (cachedPosts) {
+      return cachedPosts;
+    }
     const result = await this.likeModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
       {
@@ -298,7 +306,8 @@ export class PostsService {
       { $match: { 'postInfo.isDeleted': { $ne: true } } },
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
-    console.log("Result: ", result.length);
+
+    await this.redisService.setCache(cacheKey, result, 300)
     return result;
   }
   async getMyCommentedPosts(userId: string) {
