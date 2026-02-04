@@ -227,6 +227,7 @@ export class PostsService {
     return count;
   }
   async toggleLike(postId: string, userId: string) {
+    const cacheKey = `user_liked_posts:${userId}`;
     const existingLike = await this.likeModel.findOne({
       post: new Types.ObjectId(postId),
       user: new Types.ObjectId(userId),
@@ -234,6 +235,9 @@ export class PostsService {
     if (existingLike) {
       await this.likeModel.deleteOne({ _id: existingLike._id });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { likesCount: -1 } });
+
+      await this.redisService.delCache(cacheKey);
+      console.log(' [REDIS] Deleted cache');
       return { liked: false };
     } else {
       await this.likeModel.create({
@@ -241,6 +245,10 @@ export class PostsService {
         user: new Types.ObjectId(userId),
       });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { likesCount: 1 } });
+
+      await this.redisService.delCache(cacheKey);
+      console.log(' [REDIS] Deleted cache');
+
       return { liked: true };
     }
   }
@@ -290,8 +298,10 @@ export class PostsService {
     const cacheKey = `user_liked_posts:${userId}`;
     const cachedPosts = await this.redisService.getCache(cacheKey);
     if (cachedPosts) {
+      console.log(' [REDIS] Retrieve data from cache - speed maxium!');
       return cachedPosts;
     }
+    console.log('🐢 [MONGODB] Do not have cache, are querying Database...');
     const result = await this.likeModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
       {
@@ -307,7 +317,7 @@ export class PostsService {
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
 
-    await this.redisService.setCache(cacheKey, result, 300)
+    await this.redisService.setCache(cacheKey, result, 300);
     return result;
   }
   async getMyCommentedPosts(userId: string) {

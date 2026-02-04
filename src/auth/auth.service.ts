@@ -1,3 +1,4 @@
+import { MailService } from './../mail/mail.service';
 import { UsersService } from '@/users/users.service';
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -12,30 +13,56 @@ import { Response } from 'express';
 import { generateSecret, verify, generateURI } from "otplib";
 import QRCode from "qrcode";
 import { ChangePasswordDto } from './dto/changePassword.dto';
+import type { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bull';
+import { AuthRegisterDto } from './dto/authRegister.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
+    @InjectQueue('mail-queue') private readonly mailQueue: Queue,
     private jwtService: JwtService,
     private mailerService: MailerService,
     private usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
-  async register(email: string, pass: string) {
+  async register(dto: AuthRegisterDto) {
     try {
+      const { email, password, name, lang = 'vi' } = dto as any;
       const existingUser = await this.userModel.findOne({ email });
       if (existingUser) {
         throw new BadRequestException('Email already exists');
       }
 
-      const hashedPassword = await bcrypt.hash(pass, 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
 
       const newUser = new this.userModel({
         email,
         password: hashedPassword,
+        name: name || 'Bro',
+        lang: lang,
       });
-      return await newUser.save();
+
+      const savedUser = await newUser.save();
+
+      await this.mailQueue.add(
+        'sendWelcomeEmail',
+        {
+          email: savedUser.email,
+          name: savedUser.name,
+          lang: savedUser.lang,
+        },
+        {
+          attempts: 3,
+          backoff: 5000,
+          removeOnComplete: true,
+        },
+      );
+
+      console.log('[QUEUE] Pushed mail requests into the queue!');
+      return savedUser;
     } catch (error) {
       throw new BadRequestException(error.message);
     }
