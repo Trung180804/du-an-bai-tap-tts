@@ -1,3 +1,4 @@
+import { QueueName } from './../common/enums/queue.enum';
 import { MailService } from './../mail/mail.service';
 import { UsersService } from '@/users/users.service';
 import { Injectable, BadRequestException } from '@nestjs/common';
@@ -16,12 +17,13 @@ import { ChangePasswordDto } from './dto/changePassword.dto';
 import type { Queue } from 'bull';
 import { InjectQueue } from '@nestjs/bull';
 import { AuthRegisterDto } from './dto/authRegister.dto';
+import { MailJob } from '@/common/enums';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
-    @InjectQueue('mail-queue') private readonly mailQueue: Queue,
+    @InjectQueue(QueueName.MAIL_QUEUE) private readonly mailQueue: Queue,
     private jwtService: JwtService,
     private mailerService: MailerService,
     private usersService: UsersService,
@@ -48,7 +50,7 @@ export class AuthService {
       const savedUser = await newUser.save();
 
       await this.mailQueue.add(
-        'sendWelcomeEmail',
+        MailJob.SEND_WELCOME_EMAIL,
         {
           email: savedUser.email,
           name: savedUser.name,

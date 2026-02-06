@@ -6,6 +6,7 @@ import { MailProcessor } from './mail.processor'; // File Processor mình viết
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
+import { QueueName } from '@/common/enums';
 
 @Module({
   imports: [
@@ -14,13 +15,13 @@ import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handleba
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         redis: {
-          host: config.get('REDIS_HOST') || 'localhost',
-          port: 6379,
+          host: config.get<string>('REDIS_HOST') || 'localhost',
+          port: config.get<number>('REDIS_PORT', 6379),
         },
       }),
     }),
     BullModule.registerQueue({
-      name: 'mail-queue',
+      name: QueueName.MAIL_QUEUE,
     }),
     MailerModule.forRootAsync({
       imports: [ConfigModule],
