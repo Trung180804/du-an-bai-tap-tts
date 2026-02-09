@@ -1,7 +1,9 @@
-import { Controller, Post, Body, Param, Put, Delete, Get, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, Param, Put, Delete, Get, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { FeedDto } from './dto/feed.dto';
+import type { Response } from 'express';
+import dayjs from 'dayjs';
 
 @Controller('posts')
 @UseGuards(JwtAuthGuard)
@@ -9,9 +11,18 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
-  async create(@Req() req, @Body() body: { content: string; title: string; imageUrl?: string; createdAt?: Date;
-    likesCount?: number;
-    commentsCount?: number }) {
+  async create(
+    @Req() req,
+    @Body()
+    body: {
+      content: string;
+      title: string;
+      imageUrl?: string;
+      createdAt?: Date;
+      likesCount?: number;
+      commentsCount?: number;
+    },
+  ) {
     return this.postsService.createPost(req.user.userId,
       body.content,
       body.title,
@@ -40,6 +51,32 @@ export class PostsController {
   @Post('seed')
   async seed(@Req() req) {
     return this.postsService.seedData(req.user.userId);
+  }
+
+  @Get('export')
+  @UseGuards(JwtAuthGuard)
+  async export(
+    @Query() query: FeedDto & { format: 'csv' | 'xlsx' | 'both' },
+    @Res() res: Response,
+  ) {
+    const { format = 'xlsx', ...feedQuery } = query;
+    const buffer = await this.postsService.exportPosts(feedQuery, format);
+
+    const extension = format === 'both' ? 'zip' : format;
+
+    const contentType =
+      format === 'csv'
+        ? 'text/csv'
+        : format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/zip';
+
+    res.set({ 
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="posts_export_${dayjs().format('YYYYMMDD_HHmm')}.${extension}"`,
+    });
+
+    return res.send(buffer);
   }
 
   @Put(':id')
