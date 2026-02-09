@@ -1,5 +1,4 @@
 import { RedisService } from './../redis/redis.service';
-import { RedisClient } from './../../node_modules/ioredis/built/connectors/SentinelConnector/types.d';
 import dayjs from 'dayjs';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,7 +8,6 @@ import { Like } from './like.schema';
 import { Comment } from './comment.schema';
 import { User } from '@/users/user.schema';
 import { FeedDto } from './dto/feed.dto';
-import { metadata } from 'reflect-metadata/no-conflict';
 @Injectable()
 export class PostsService {
   constructor(
@@ -31,7 +29,7 @@ export class PostsService {
     commentsCount?: number,
   ) {
     const newPost = new this.postModel({
-      title: title || "Trungggg",
+      title: title || 'Trungggg',
       content: content,
       imageUrl: imageUrl,
       author: new Types.ObjectId(userId),
@@ -50,16 +48,23 @@ export class PostsService {
     title: string,
     imageUrl?: string,
     createdAt?: Date) {
-    console.log("Đang tìm Post với ID:", postId);
-    console.log("Của User ID:", userId);
-    const post = await this.postModel.findOne({_id: new Types.ObjectId(postId), isDeleted: { $ne: true } });
+    console.log('Searching with ID:', postId);
+    console.log('Belong to User ID:', userId);
+    const post = await this.postModel.findOne({
+      _id: new Types.ObjectId(postId),
+      isDeleted: { $ne: true },
+    });
     if (!post || post.isDeleted) {
       throw new NotFoundException('Do not search post');
     }
     if (post.author.toString() !== userId.toString().trim()) {
       throw new NotFoundException('You are not the author of this post');
     }
-    return this.postModel.findByIdAndUpdate(postId, { content, title, imageUrl, createdAt }, { new: true });
+    return this.postModel.findByIdAndUpdate(
+      postId,
+      { content, title, imageUrl, createdAt },
+      { new: true },
+    );
   }
   async deletePost(postId: string, userId: string) {
     const post = await this.postModel.findById(postId);
@@ -113,7 +118,7 @@ export class PostsService {
       { $match: { authorInfo: { $ne: [] } } },
       {
         $facet: {
-          metadata: [{$count: 'total' }],
+          metadata: [{ $count: 'total' }],
           data: [
             { $unwind: '$authorInfo' },
             {
@@ -125,7 +130,7 @@ export class PostsService {
                     $match: {
                       $expr: {
                         $and: [
-                          { $eq:['$post','$$postId']},
+                          { $eq: ['$post', '$$postId'] },
                           { $ne: ['$isDeleted', true] },
                         ],
                       },
@@ -141,13 +146,18 @@ export class PostsService {
                       as: 'commenter',
                     },
                   },
-                  { $unwind: { path: '$commenter', preserveNullAndEmptyArrays: true } },
+                  {
+                    $unwind: {
+                      path: '$commenter',
+                      preserveNullAndEmptyArrays: true,
+                    },
+                  },
                   {
                     $project: {
                       content: 1,
                       createdAt: 1,
-                      "commenter.name": 1,
-                      "commenter.avatar": 1,
+                      'commenter.name': 1,
+                      'commenter.avatar': 1,
                     },
                   },
                 ],
@@ -164,7 +174,14 @@ export class PostsService {
                       $expr: {
                         $and: [
                           { $eq: ['$post', '$$postId'] },
-                          { $eq: ['$user', typeof userId === 'string' ? new Types.ObjectId(userId) : userId] },
+                          {
+                            $eq: [
+                              '$user',
+                              typeof userId === 'string'
+                                ? new Types.ObjectId(userId)
+                                : userId,
+                            ],
+                          },
                         ],
                       },
                     },
@@ -267,12 +284,66 @@ export class PostsService {
       });
       console.log('Saved new comment:', newComment);
       await this.postModel.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } });
+
+      const cacheKey = `user_commented_posts:${userId}`;
+      await this.redisService.delCache(cacheKey);
+      console.log(' [REDIS] Deleted commented posts cache due to new comment');
+
       return newComment;
     } catch (error) {
       console.error('Error', error.message, error.stack);
       throw new NotFoundException('Failed to add comment');
     }
   }
+
+  async updateComment( commentId: string, userId: string, content: string, imageUrl?: string ){
+    const comment = await this.commentModel.findOne({
+      _id: new Types.ObjectId(commentId),
+      user: new Types.ObjectId(userId),
+      isDeleted: { $ne: true },
+    });
+
+    if(!comment){
+      throw new NotFoundException('Comment not found or you are not the author');
+    }
+
+    const updatedComment = await this.commentModel.findByIdAndUpdate(
+      commentId,
+      { content, imageUrl, updateAt: new Date() },
+      { new: true },
+    );
+
+    await this.redisService.delCache(`user_commented_posts:${userId}`);
+    console.log(' [REDIS] Cache cleared after updating comment');
+
+    return updatedComment;
+  }
+
+  async deleteComment(commentId: string, userId: string){
+    const comment = await this.commentModel.findOne({
+      _id: new Types.ObjectId(commentId),
+      user: new Types.ObjectId(userId),
+    });
+
+    if(!comment || comment.isDeleted){
+      throw new NotFoundException('Comment not found');
+    }
+
+    await this.commentModel.findByIdAndUpdate(commentId, {
+      isDeleted: true,
+      deletedAt: new Date(),
+    });
+
+    await this.commentModel.findByIdAndUpdate(commentId, {
+      $inc: { commentsCount: -1 },
+    });
+
+    await this.redisService.delCache(`user_commented_posts:${userId}`);
+    console.log(' [REDIS] Cache cleared after deleting comment');
+
+    return { message: 'Comment deleted successfully' };
+  }
+
   private getSortCondition(mode?: string): any {
     switch (mode) {
       // post newest
@@ -301,7 +372,7 @@ export class PostsService {
       console.log(' [REDIS] Retrieve data from cache - speed maxium!');
       return cachedPosts;
     }
-    console.log('🐢 [MONGODB] Do not have cache, are querying Database...');
+    console.log(' [MONGODB] Do not have cache, are querying Database...');
     const result = await this.likeModel.aggregate([
       { $match: { user: new Types.ObjectId(userId) } },
       {
@@ -317,12 +388,29 @@ export class PostsService {
       { $replaceRoot: { newRoot: '$postInfo' } },
     ]);
 
-    await this.redisService.setCache(cacheKey, result, 300);
+    const ttl = parseInt(process.env.REDIS_CACHE_TTL || '300');
+    await this.redisService.setCache(cacheKey, result, ttl);
     return result;
   }
   async getMyCommentedPosts(userId: string) {
-    return this.commentModel.aggregate([
-      { $match: { user: new Types.ObjectId(userId) } },
+    const cacheKey = `user_commented_posts:${userId}`;
+    const cachedPosts = await this.redisService.getCache(cacheKey);
+    if (cachedPosts) {
+      console.log(' [REDIS] Retrieve data from cache...');
+      return cachedPosts;
+    }
+    console.log(' [MONGODB] Do not have cache, are querying Database...');
+
+    const result = await this.commentModel.aggregate([
+      {
+        $match: { user: new Types.ObjectId(userId), isDeleted: { $ne: true } },
+      },
+      {
+        $group: {
+          _id: '$post',
+          lastCommentedAt: { $max: '$createdAt' },
+        },
+      },
       {
         $lookup: {
           from: 'posts',
@@ -333,14 +421,13 @@ export class PostsService {
       },
       { $unwind: '$postInfo' },
       { $match: { 'postInfo.isDeleted': { $ne: true } } },
-      {
-        $group: {
-          _id: '$postInfo._id',
-          postData: { $first: '$postInfo' },
-        },
-      },
-      { $replaceRoot: { newRoot: '$postData' } },
+      { $replaceRoot: { newRoot: '$postInfo' } },
+      { $sort: { createdAt: -1 } },
     ]);
+
+    const ttl = parseInt(process.env.REDIS_CACHE_TTL || '300');
+    await this.redisService.setCache(cacheKey, result, ttl);
+    return result;
   }
   async seedData(userId: string) {
     const posts: any[] = [];
