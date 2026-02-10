@@ -125,6 +125,7 @@ export class PostsService {
         },
       },
       { $unwind: '$authorInfo' },
+
       {
         $lookup: {
           from: 'comments',
@@ -165,6 +166,7 @@ export class PostsService {
           as: 'latestComments',
         },
       },
+
       {
         $lookup: {
           from: 'likes',
@@ -184,13 +186,41 @@ export class PostsService {
           as: 'likedData',
         },
       },
-      { $addFields: { isLikedByCurrentUser: { $gt: [{ $size: '$likedData' }, 0] } } },
+      {
+        $addFields: {
+          isLikedByCurrentUser: { $gt: [{ $size: '$likedData' }, 0] },
+        },
+      },
+
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          content: 1,
+          imageUrl: 1,
+          likesCount: 1,
+          commentsCount: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          interactionScore: 1,
+          lastActivity: 1,
+          isLikedByCurrentUser: 1,
+          latestComments: 1,
+
+          author: {
+            _id: '$authorInfo._id',
+            name: '$authorInfo.name',
+            avatar: '$authorInfo.avatar',
+          },
+        },
+      },
       { $sort: this.getSortCondition(mode) },
     ];
   }
 
   async getFeed(userId: string, query: FeedDto) {
-    const { mode = 'newest', page = 1, limit = 10 } = query;
+    const { mode = 'newest', page: rawPage = 1, limit = 10 } = query;
+    let page = Math.max(1, Number(rawPage));
     const skip = (page - 1) * limit;
     const timeLimit = this.timeLimit(mode);
     const filter = { isDeleted: { $ne: true }, createdAt: { $gte: timeLimit } };
@@ -209,12 +239,21 @@ export class PostsService {
 
     const data = result[0].data;
     const totalItems = result[0].metadata[0]?.total || 0;
+    const totalPages = Math.ceil(totalItems / limit);
+    if (page > totalPages && (totalItems > 0 || page < 1)) {
+      // if you want to go back to the recent page
+      return this.getFeed(userId, { ...query, page: totalPages });
+      // if you want to error message
+      //throw new NotFoundException(`Page ${page} does not exist. Now there are only ${totalPages} pages.`);
+    }
 
     return {
       data,
       meta: {
         totalItems,
-        totalPages: Math.ceil(totalItems / limit),
+        itemCount: data.length,
+        itemsPerPage: Number(limit),
+        totalPages,
         currentPage: Number(page),
       },
     };
@@ -365,7 +404,12 @@ export class PostsService {
   }
 
   // ====================== COMMENT ======================
-  async addComment(postId: string, userId: string, content: string, imageUrl?: string) {
+  async addComment(
+    postId: string,
+    userId: string,
+    content: string,
+    imageUrl?: string,
+  ) {
     const post = await this.postModel.findById(postId);
     if (!post || post.isDeleted) throw new NotFoundException('Post not found');
 
@@ -377,13 +421,20 @@ export class PostsService {
       isDeleted: false,
     });
 
-    await this.postModel.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } });
+    await this.postModel.findByIdAndUpdate(postId, {
+      $inc: { commentsCount: 1 },
+    });
     await this.redisService.delCache(`user_commented_posts:${userId}`);
 
     return newComment;
   }
 
-  async updateComment(commentId: string, userId: string, content: string, imageUrl?: string) {
+  async updateComment(
+    commentId: string,
+    userId: string,
+    content: string,
+    imageUrl?: string,
+  ) {
     const comment = await this.commentModel.findOne({
       _id: new Types.ObjectId(commentId),
       user: new Types.ObjectId(userId),
