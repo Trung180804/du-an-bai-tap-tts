@@ -11,6 +11,8 @@ import { RedisService } from './../redis/redis.service';
 import ExcelJS from 'exceljs';
 import { Parser } from 'json2csv';
 import JSZip from 'jszip';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { PostsGateway } from './posts.gateway';
 
 @Injectable()
 export class PostsService {
@@ -20,6 +22,7 @@ export class PostsService {
     @InjectModel(Comment.name) private commentModel: Model<Comment>,
     @InjectModel(User.name) private userModel: Model<User>,
     private readonly redisService: RedisService,
+    private readonly postsGateway: PostsGateway,
   ) {}
 
   // ====================== POST ======================
@@ -220,7 +223,7 @@ export class PostsService {
 
   async getFeed(userId: string, query: FeedDto) {
     const { mode = 'newest', page: rawPage = 1, limit = 10 } = query;
-    let page = Math.max(1, Number(rawPage));
+    const page = Math.max(1, Number(rawPage));
     const skip = (page - 1) * limit;
     const timeLimit = this.timeLimit(mode);
     const filter = { isDeleted: { $ne: true }, createdAt: { $gte: timeLimit } };
@@ -425,6 +428,7 @@ export class PostsService {
       $inc: { commentsCount: 1 },
     });
     await this.redisService.delCache(`user_commented_posts:${userId}`);
+    await this.postsGateway.notifyNewComment(postId, newComment);
 
     return newComment;
   }
@@ -599,8 +603,66 @@ export class PostsService {
   }
 
   async checkCommentsForPost(postId: string) {
-    return this.commentModel.find({ post: new Types.ObjectId(postId) })
+    return this.commentModel
+      .find({ post: new Types.ObjectId(postId) })
       .sort({ createdAt: -1 })
       .limit(2);
+  }
+
+  // ======================== Schedule =======================
+  @Cron('*/10 * * * * *')
+  // second - minute - hour - day of month - month - day of week
+ 
+  // Rule 1: Run at 00:00 eveday
+  // @Cron('0 0 0 * * *')
+
+  // Rule 2: Run at the 30th minute of each hour(Ex: 1:30, 2:30, 3:30...)
+  // @Cron('0 30 * * * *')
+
+  // Rule 3: Run from 8:00 AM, Monday to Friday
+  // @Cron('0 0 8 * * 1-5')
+
+  // Rule 4: Run every 2 hours ( 2:00, 4:00, 6:00...)
+  // @Cron('0 0 */2 * * *')
+
+  // Rule 5: Runs only at 00:00 on the first day of each month.
+  // @Cron('0 0 0 1 * *')
+  async cleanupNoInteractionPosts() {
+    const oneDayAgo = dayjs().subtract(1, 'day').toDate();
+
+    const result = await this.postModel.updateMany(
+      {
+        createdAt: { $lt: oneDayAgo },
+        likesCount: 0,
+        commentsCount: 0,
+        isDeleted: false,
+      },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
+      },
+    );
+    console.log(
+      ` [SCHEDULE] Cleaned up ${result.modifiedCount} posts with no interaction after 1 day `,
+    );
+  }
+
+  // test delete posts no interaction
+  async createExpiredPost(userId: string) {
+    const twoDaysAgo = dayjs().subtract(2, 'days').toDate();
+
+    const expiredPost = new this.postModel({
+      title: 'Post test Schedule',
+      content: 'Post test cleanup post no interaction',
+      author: new Types.ObjectId(userId),
+      createdAt: twoDaysAgo,
+      likesCount: 0,
+      commentsCount: 0,
+      isDeleted: false,
+    });
+
+    return expiredPost.save();
   }
 }
