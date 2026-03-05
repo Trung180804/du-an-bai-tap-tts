@@ -6,11 +6,9 @@ import { User } from '../user.schema';
 describe('UsersService', () => {
   let service: UsersService;
 
-  // Tạo ra các hàm giả để hứng kết quả của .exec() và .select()
   const mockExec = jest.fn();
   const mockSelect = jest.fn().mockReturnValue({ exec: mockExec });
 
-  // Đây là cách mock một Mongoose Model hoàn chỉnh
   const mockUserModel = function (dto: any) {
     this.data = dto;
     this.save = jest.fn().mockResolvedValue(this.data);
@@ -37,7 +35,7 @@ describe('UsersService', () => {
 
   describe('create', () => {
     it('should create and save a new user', async () => {
-      const email = 'test@example.com';
+      const email = 'trung@gmail.com';
       const password = 'hashedPassword';
 
       const result = await service.create(email, password);
@@ -49,12 +47,15 @@ describe('UsersService', () => {
 
   describe('findOneByEmailWithPassword', () => {
     it('should find user by email and select password', async () => {
-      const mockUser = { email: 'test@example.com', password: '123' };
+      const mockUser = { email: 'trung@gmail.com', password: '123' };
       mockExec.mockResolvedValueOnce(mockUser);
 
-      const result = await service.findOneByEmailWithPassword('test@example.com');
+      const result =
+        await service.findOneByEmailWithPassword('trung@gmail.com');
 
-      expect(mockUserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
+      expect(mockUserModel.findOne).toHaveBeenCalledWith({
+        email: 'trung@gmail.com',
+      });
       expect(mockSelect).toHaveBeenCalledWith('+password');
       expect(result).toEqual(mockUser);
     });
