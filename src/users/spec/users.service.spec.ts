@@ -15,10 +15,14 @@ describe('UsersService', () => {
   };
   mockUserModel.find = jest.fn().mockReturnValue({ exec: mockExec });
   mockUserModel.findById = jest.fn().mockReturnValue({ exec: mockExec });
-  mockUserModel.findOne = jest.fn().mockReturnValue({ select: mockSelect, exec: mockExec });
-  mockUserModel.findByIdAndUpdate = jest.fn().mockReturnValue({ exec: mockExec });
+  mockUserModel.findOne = jest
+    .fn()
+    .mockReturnValue({ select: mockSelect, exec: mockExec });
+  mockUserModel.findByIdAndUpdate = jest
+    .fn()
+    .mockReturnValue({ exec: mockExec });
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -30,6 +34,9 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
+  });
+
+  beforeEach(() => {
     jest.clearAllMocks();
   });
 

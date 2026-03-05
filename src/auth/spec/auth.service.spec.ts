@@ -10,39 +10,30 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { User } from '@/users/entities/user.entity';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 
-jest.mock('bcrypt');
-jest.mock('otplib');
-jest.mock('qrcode');
-
 import * as bcrypt from 'bcrypt';
 import { generateSecret, verify, generateURI } from 'otplib';
 import QRCode from 'qrcode';
 
+import { createMockAuthUser } from '../../../test/test-helpers/mock-data.factory';
+
+jest.mock('bcrypt');
+jest.mock('otplib');
+jest.mock('qrcode');
+
 describe('AuthService', () => {
   let service: AuthService;
   let usersService: UsersService;
-  let jwtService: JwtService;
   let userModel: any;
   let mailQueue: any;
   let mailerService: any;
 
-  const createMockUser = (data: any = {}) => ({
-    _id: '123',
-    email: data.email || 'test@gmail.com',
-    password: data.password || 'hashed-password',
-    isTwoFactorAuthEnabled: data.isTwoFactorAuthEnabled ?? false,
-    twoFactorAuthSecret: 'secret123',
-    save: jest.fn().mockResolvedValue({ _id: '123', ...data }),
-    toObject: jest.fn().mockReturnThis(),
+  const userModelMock = jest.fn((data) => createMockAuthUser(data));
+  userModelMock.findOne = jest.fn();
+  userModelMock.findById = jest.fn().mockReturnValue({
+    select: jest.fn().mockResolvedValue(createMockAuthUser()),
   });
 
-  beforeEach(async () => {
-    const userModelMock = jest.fn((data) => createMockUser(data));
-    userModelMock.findOne = jest.fn();
-    userModelMock.findById = jest.fn().mockReturnValue({
-      select: jest.fn().mockResolvedValue(createMockUser()),
-    });
-
+  beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -55,7 +46,10 @@ describe('AuthService', () => {
           },
         },
         { provide: MailerService, useValue: { sendMail: jest.fn() } },
-        { provide: getQueueToken(QueueName.MAIL_QUEUE), useValue: { add: jest.fn() } },
+        {
+          provide: getQueueToken(QueueName.MAIL_QUEUE),
+          useValue: { add: jest.fn() },
+        },
         {
           provide: UsersService,
           useValue: {
@@ -69,20 +63,23 @@ describe('AuthService', () => {
 
     service = module.get<AuthService>(AuthService);
     usersService = module.get<UsersService>(UsersService);
-    jwtService = module.get<JwtService>(JwtService);
     userModel = module.get(getModelToken(User.name));
     mailQueue = module.get(getQueueToken(QueueName.MAIL_QUEUE));
     mailerService = module.get(MailerService);
 
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  beforeEach(() => {
     jest.clearAllMocks();
     (bcrypt.compare as jest.Mock).mockReset();
     (bcrypt.hash as jest.Mock).mockResolvedValue('new-hashed-password');
     (generateSecret as jest.Mock).mockReturnValue('new-secret-123');
     (verify as jest.Mock).mockReturnValue(true);
     (generateURI as jest.Mock).mockReturnValue('otpauth://...');
-    (QRCode.toDataURL as jest.Mock).mockResolvedValue('data:image/png;base64,...');
-
-    jest.spyOn(console, 'log').mockImplementation(() => {});
+    (QRCode.toDataURL as jest.Mock).mockResolvedValue(
+      'data:image/png;base64,...',
+    );
   });
 
   // ==================== REGISTER ====================
@@ -93,7 +90,9 @@ describe('AuthService', () => {
 
       const result = await service.register(dto as any);
 
-      expect(userModel.findOne).toHaveBeenCalledWith({ email: 'new@gmail.com' });
+      expect(userModel.findOne).toHaveBeenCalledWith({
+        email: 'new@gmail.com',
+      });
       expect(mailQueue.add).toHaveBeenCalled();
       expect(result.email).toBe('new@gmail.com');
       expect(result.name).toBe('Trung');
@@ -101,15 +100,19 @@ describe('AuthService', () => {
 
     it('should throw if email already exists', async () => {
       userModel.findOne.mockResolvedValue({ email: 'exists@gmail.com' });
-      await expect(service.register({ email: 'exists@gmail.com', password: '123' } as any))
-        .rejects.toThrow(BadRequestException);
+      await expect(
+        service.register({ email: 'exists@gmail.com', password: '123' } as any),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   // ==================== LOGIN ====================
+
   describe('login', () => {
     it('should return access_token when login successful (no 2FA)', async () => {
-      usersService.findOneByEmailWithPassword.mockResolvedValue(createMockUser());
+      usersService.findOneByEmailWithPassword.mockResolvedValue(
+        createMockAuthUser(),
+      );
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       const result = await service.login('test@gmail.com', '123456');
@@ -117,7 +120,7 @@ describe('AuthService', () => {
     });
 
     it('should return 2FA_REQUIRED when 2FA is enabled', async () => {
-      const twoFaUser = createMockUser({ isTwoFactorAuthEnabled: true });
+      const twoFaUser = createMockAuthUser({ isTwoFactorAuthEnabled: true });
       usersService.findOneByEmailWithPassword.mockResolvedValue(twoFaUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
@@ -127,13 +130,18 @@ describe('AuthService', () => {
     });
 
     it('should throw UnauthorizedException when wrong password', async () => {
-      usersService.findOneByEmailWithPassword.mockResolvedValue(createMockUser());
+      usersService.findOneByEmailWithPassword.mockResolvedValue(
+        createMockAuthUser(),
+      );
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-      await expect(service.login('test@gmail.com', 'wrong')).rejects.toThrow(UnauthorizedException);
+      await expect(service.login('test@gmail.com', 'wrong')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
-  // ==================== 2FA ====================
+  // ==================== 2FA  ====================
+
   describe('2FA', () => {
     it('setup2FA should return QR code', async () => {
       const result = await service.setup2FA('123');
@@ -154,14 +162,17 @@ describe('AuthService', () => {
       userModel.findById.mockReturnValue({
         select: jest
           .fn()
-          .mockResolvedValue(createMockUser({ isTwoFactorAuthEnabled: true })),
+          .mockResolvedValue(
+            createMockAuthUser({ isTwoFactorAuthEnabled: true }),
+          ),
       });
       const result = await service.disable2FA('123', '123456');
       expect(result.message).toBe('2FA disabled successfully');
     });
   });
 
-  // ==================== CHANGE PASSWORD & FORGOT PASSWORD ====================
+  // ==================== CHANGE & FORGOT PASSWORD ====================
+
   describe('changePassword & forgotPassword', () => {
     it('changePassword should success', async () => {
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -171,7 +182,7 @@ describe('AuthService', () => {
     });
 
     it('forgotPassword should send OTP', async () => {
-      userModel.findOne.mockResolvedValue(createMockUser());
+      userModel.findOne.mockResolvedValue(createMockAuthUser());
       const result = await service.forgotPassword('test@gmail.com');
       expect(mailerService.sendMail).toHaveBeenCalled();
       expect(result).toBeDefined();

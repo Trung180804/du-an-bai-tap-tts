@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MailService } from './mail.service';
 import { getQueueToken } from '@nestjs/bull';
 import { QueueName } from '@/common/enums/queue.enum';
-import { beforeEach } from 'node:test';
 
 describe('MailService', () => {
   let service: MailService;

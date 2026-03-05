@@ -14,11 +14,11 @@ describe('AuthController', () => {
   let controller: AuthController;
   let authService: AuthService;
 
-  console.log('DEBUG IMPORTS:', { 
-    AuthController, 
-    AuthService, 
-    UsersService, 
-    JwtAuthGuard 
+  console.log('DEBUG IMPORTS:', {
+    AuthController,
+    AuthService,
+    UsersService,
+    JwtAuthGuard,
   });
 
   const mockAuthService = {
@@ -32,7 +32,7 @@ describe('AuthController', () => {
     forgotPassword: jest.fn(),
   };
 
-  const mockUsersService = {findOne: jest.fn()}; // UsersService được inject nhưng không dùng trong controller
+  const mockUsersService = {findOne: jest.fn()}; 
 
   const mockReq = {
     user: { userId: '123', isTwoFactorPending: false },
@@ -43,7 +43,7 @@ describe('AuthController', () => {
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
-        { provide: UsersService, useValue: mockUsersService }, // ← FIX CHÍNH Ở ĐÂY
+        { provide: UsersService, useValue: mockUsersService },
         { provide: JwtAuthGuard, useValue: { canActivate: jest.fn().mockReturnValue(true) } },
       ],
     }).compile();
