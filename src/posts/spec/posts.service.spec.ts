@@ -13,9 +13,11 @@ import { PostsGateway } from '../posts.gateway';
 import {
   mockUserId,
   mockPostId,
-  mockCommentId,
   createMockRedisService,
   createMockPostsGateway,
+  createMockPost,
+  createMockComment,
+  createMockMongooseModel,
 } from '../../../test/test-helpers/mock-data.factory';
 
 jest.mock('json2csv', () => ({
@@ -47,47 +49,20 @@ jest.mock('jszip', () => {
 describe('PostsService', () => {
   let service: PostsService;
 
-  const mockPost = {
-    _id: mockPostId,
-    title: 'Test Title',
-    content: 'Test Content',
-    author: mockUserId,
-    isDeleted: false,
-    save: jest.fn().mockResolvedValue(this),
-  };
+  const mockPost = createMockPost();
+  const mockComment = createMockComment();
 
-  const mockComment = {
-    _id: mockCommentId,
-    content: 'Nice post!',
-    post: mockPostId,
-    user: mockUserId,
-  };
-
-  const mockPostModel = function (dto: any) {
-    this.data = dto;
-    this.save = jest.fn().mockResolvedValue(mockPost);
-  } as any;
-
-  mockPostModel.findOne = jest.fn();
-  mockPostModel.findById = jest.fn();
-  mockPostModel.findByIdAndUpdate = jest.fn();
-  mockPostModel.create = jest.fn();
-  mockPostModel.aggregate = jest.fn();
-  mockPostModel.updateMany = jest.fn();
-
-  const mockCommentModel = {
-    create: jest.fn(),
-    findOne: jest.fn(),
-    findByIdAndUpdate: jest.fn(),
-  };
-  const mockLikeModel = {
-    create: jest.fn(),
-    findOne: jest.fn(),
-    deleteOne: jest.fn(),
-  };
-  const mockUserModel = {};
+  let mockPostModel: any;
+  let mockCommentModel: any;
+  let mockLikeModel: any;
+  let mockUserModel: any;
 
   beforeAll(async () => {
+    mockPostModel = createMockMongooseModel();
+    mockCommentModel = createMockMongooseModel();
+    mockLikeModel = createMockMongooseModel();
+    mockUserModel = createMockMongooseModel();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PostsService,
@@ -95,8 +70,8 @@ describe('PostsService', () => {
         { provide: getModelToken(Comment.name), useValue: mockCommentModel },
         { provide: getModelToken(Like.name), useValue: mockLikeModel },
         { provide: getModelToken(User.name), useValue: mockUserModel },
-        { provide: RedisService, useValue: createMockRedisService() }, // Gọi từ Helper
-        { provide: PostsGateway, useValue: createMockPostsGateway() }, // Gọi từ Helper
+        { provide: RedisService, useValue: createMockRedisService() },
+        { provide: PostsGateway, useValue: createMockPostsGateway() },
       ],
     }).compile();
 
@@ -111,79 +86,49 @@ describe('PostsService', () => {
     expect(service).toBeDefined();
   });
 
-  // ====================== POST CRUD TESTS ======================
   describe('Post CRUD', () => {
     it('should create a new post successfully', async () => {
-      const result = await service.createPost(
-        mockUserId,
-        'Test Content',
-        'Test Title',
-      );
+      const result = await service.createPost(mockUserId, 'Test Content', 'Test Title');
       expect(result.title).toEqual('Test Title');
     });
 
     it('should throw NotFoundException if update a post that not exists or wrong author', async () => {
       mockPostModel.findOne.mockResolvedValue(null);
-      await expect(
-        service.updatePost(mockPostId, mockUserId, 'New content', 'New Title'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updatePost(mockPostId, mockUserId, 'New content', 'New Title')).rejects.toThrow(NotFoundException);
     });
 
     it('should update post successfully', async () => {
       mockPostModel.findOne.mockResolvedValue(mockPost);
-      mockPostModel.findByIdAndUpdate.mockResolvedValue({
-        ...mockPost,
-        title: 'New Title',
-      });
-      const result = await service.updatePost(
-        mockPostId,
-        mockUserId,
-        'New content',
-        'New Title',
-      );
+      mockPostModel.findByIdAndUpdate.mockResolvedValue({ ...mockPost, title: 'New Title' });
+      const result = await service.updatePost(mockPostId, mockUserId, 'New content', 'New Title');
+      
       expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalled();
       expect(result.title).toEqual('New Title');
     });
 
     it('should soft delete post successfully', async () => {
       mockPostModel.findById.mockResolvedValue(mockPost);
-      mockPostModel.findByIdAndUpdate.mockResolvedValue({
-        ...mockPost,
-        isDeleted: true,
-      });
+      mockPostModel.findByIdAndUpdate.mockResolvedValue({ ...mockPost, isDeleted: true });
       await service.deletePost(mockPostId, mockUserId);
+
       expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalledWith(
-        mockPostId,
-        expect.objectContaining({ isDeleted: true }),
-        { new: true },
+        mockPostId, expect.objectContaining({ isDeleted: true }), { new: true },
       );
     });
   });
 
-  // ====================== COMMENTS ======================
   describe('Comments', () => {
     it('should add comment, update post count, clear cache and notify gateway', async () => {
       mockPostModel.findById.mockResolvedValue(mockPost);
       mockCommentModel.create.mockResolvedValue(mockComment);
-      mockPostModel.findByIdAndUpdate.mockResolvedValue({
-        ...mockPost,
-        commentsCount: 1,
-      });
+      mockPostModel.findByIdAndUpdate.mockResolvedValue({ ...mockPost, commentsCount: 1 });
 
-      const result = await service.addComment(
-        mockPostId,
-        mockUserId,
-        'Nice post!',
-      );
+      const result = await service.addComment(mockPostId, mockUserId, 'Nice post!');
       expect(mockCommentModel.create).toHaveBeenCalled();
-      expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalledWith(mockPostId, {
-        $inc: { commentsCount: 1 },
-      });
+      expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalledWith(mockPostId, { $inc: { commentsCount: 1 } });
       expect(result).toEqual(mockComment);
     });
   });
-
-  // ====================== LIKES ======================
 
   describe('toggleLike', () => {
     it('should unlike if user already liked the post', async () => {
@@ -193,31 +138,18 @@ describe('PostsService', () => {
       mockLikeModel.deleteOne.mockResolvedValue(true);
 
       const result = await service.toggleLike(mockPostId, mockUserId);
-      expect(mockLikeModel.deleteOne).toHaveBeenCalledWith({
-        _id: mockExistingLike._id,
-      });
-      expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalledWith(mockPostId, {
-        $inc: { likesCount: -1 },
-      });
+      expect(mockLikeModel.deleteOne).toHaveBeenCalledWith({ _id: mockExistingLike._id });
+      expect(mockPostModel.findByIdAndUpdate).toHaveBeenCalledWith(mockPostId, { $inc: { likesCount: -1 } });
       expect(result).toEqual({ liked: false });
     });
-
-    // ==================== GET FEED & EXPORT ====================
 
     describe('getFeed', () => {
       it('should return feed data and pagination meta successfully', async () => {
         mockPostModel.aggregate.mockResolvedValue([
-          {
-            metadata: [{ total: 100 }],
-            data: [{ _id: mockPostId, title: 'Feed Post' }],
-          },
+          { metadata: [{ total: 100 }], data: [{ _id: mockPostId, title: 'Feed Post' }] },
         ]);
 
-        const result = await service.getFeed(mockUserId, {
-          mode: 'newest',
-          page: 1,
-          limit: 10,
-        });
+        const result = await service.getFeed(mockUserId, { mode: 'newest', page: 1, limit: 10 });
         expect(mockPostModel.aggregate).toHaveBeenCalled();
         expect(result.meta.totalItems).toBe(100);
       });
@@ -244,8 +176,6 @@ describe('PostsService', () => {
     });
   });
 
-  // ==================== CRONJOBS ====================
-
   describe('Cronjobs', () => {
     it('should reset daily post stats and clear related caches', async () => {
       mockPostModel.updateMany.mockResolvedValue({ modifiedCount: 5 });
@@ -254,9 +184,7 @@ describe('PostsService', () => {
       await service.cleanupNoInteractionPosts();
 
       expect(mockPostModel.updateMany).toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Cleaned up 5 posts'),
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Cleaned up 5 posts'));
       consoleSpy.mockRestore();
     });
   });

@@ -6,6 +6,8 @@ import { UsersService } from '../src/users/users.service';
 import { JwtAuthGuard } from '../src/auth/jwt-auth.guard';
 import { MinioService } from '../src/minio/minio.service';
 
+import { mockUserId } from './test-helpers/mock-data.factory';
+
 describe('UsersController (e2e)', () => {
   let app: INestApplication;
 
@@ -29,7 +31,7 @@ describe('UsersController (e2e)', () => {
       .useValue({
         canActivate: (context) => {
           const req = context.switchToHttp().getRequest();
-          req.user = { _id: '123', email: 'user1@example.com' };
+          req.user = { userId: mockUserId, email: 'test@gmail.com', isTwoFactorPending: false };
           return true;
         },
       })
@@ -49,25 +51,23 @@ describe('UsersController (e2e)', () => {
     await app.close();
   });
 
-  // ====================== UPDATE USER PROFILE ======================
   describe('/users/profile (PATCH)', () => {
     it('should update user profile', async () => {
       const updateDto = { name: 'Trung dep trai' };
       mockUsersService.updateProfile.mockResolvedValue({
-        _id: '123',
-        email: 'user1@example.com',
+        id: mockUserId,
+        email: 'test@gmail.com',
         name: 'Trung dep trai',
       });
 
       const response = await request(app.getHttpServer())
         .patch('/users/profile')
-        .set('Authorization', 'Bearer fake-jwt-token')
         .send(updateDto)
         .expect(200);
 
       expect(response.body).toEqual({
-        _id: '123',
-        email: 'user1@example.com',
+        id: mockUserId,
+        email: 'test@gmail.com',
         name: 'Trung dep trai',
       });
     });
@@ -77,7 +77,6 @@ describe('UsersController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch('/users/profile')
-        .set('Authorization', 'Bearer fake-jwt-token')
         .send(wrongDto)
         .expect(400);
 

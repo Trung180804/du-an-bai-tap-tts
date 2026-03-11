@@ -3,7 +3,7 @@ import { AuthController } from '../auth.controller';
 import { AuthService } from '../auth.service';
 import { UsersService } from '../../users/users.service';
 import { JwtAuthGuard } from '../jwt-auth.guard';
-import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthRegisterDto } from '../dto/authRegister.dto';
 import { AuthLoginDto } from '../dto/authLogin.dto';
 import { ChangePasswordDto } from '../dto/changePassword.dto';

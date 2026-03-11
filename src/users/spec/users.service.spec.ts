@@ -2,27 +2,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { User } from '../user.schema';
+import { createMockMongooseModel } from '../../../test/test-helpers/mock-data.factory';
 
 describe('UsersService', () => {
   let service: UsersService;
-
-  const mockExec = jest.fn();
-  const mockSelect = jest.fn().mockReturnValue({ exec: mockExec });
-
-  const mockUserModel = function (dto: any) {
-    this.data = dto;
-    this.save = jest.fn().mockResolvedValue(this.data);
-  };
-  mockUserModel.find = jest.fn().mockReturnValue({ exec: mockExec });
-  mockUserModel.findById = jest.fn().mockReturnValue({ exec: mockExec });
-  mockUserModel.findOne = jest
-    .fn()
-    .mockReturnValue({ select: mockSelect, exec: mockExec });
-  mockUserModel.findByIdAndUpdate = jest
-    .fn()
-    .mockReturnValue({ exec: mockExec });
+  let mockUserModel: any;
 
   beforeAll(async () => {
+    mockUserModel = createMockMongooseModel();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -55,15 +43,11 @@ describe('UsersService', () => {
   describe('findOneByEmailWithPassword', () => {
     it('should find user by email and select password', async () => {
       const mockUser = { email: 'trung@gmail.com', password: '123' };
-      mockExec.mockResolvedValueOnce(mockUser);
+      mockUserModel.exec.mockResolvedValueOnce(mockUser);
+      const result = await service.findOneByEmailWithPassword('trung@gmail.com');
 
-      const result =
-        await service.findOneByEmailWithPassword('trung@gmail.com');
-
-      expect(mockUserModel.findOne).toHaveBeenCalledWith({
-        email: 'trung@gmail.com',
-      });
-      expect(mockSelect).toHaveBeenCalledWith('+password');
+      expect(mockUserModel.findOne).toHaveBeenCalledWith({ email: 'trung@gmail.com' });
+      expect(mockUserModel.select).toHaveBeenCalledWith('+password');
       expect(result).toEqual(mockUser);
     });
   });
@@ -71,7 +55,7 @@ describe('UsersService', () => {
   describe('updateProfile', () => {
     it('should update user profile', async () => {
       const mockUpdatedUser = { _id: '1', name: 'New Name' };
-      mockExec.mockResolvedValueOnce(mockUpdatedUser);
+      mockUserModel.exec.mockResolvedValueOnce(mockUpdatedUser);
 
       const result = await service.updateProfile('1', { name: 'New Name' });
 

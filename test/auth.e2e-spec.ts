@@ -5,8 +5,8 @@ import { JwtAuthGuard } from './../src/auth/jwt-auth.guard';
 import * as bcrypt from 'bcrypt';
 import { getModelToken } from '@nestjs/mongoose';
 import { User } from './../src/users/user.schema';
-
-const request = require('supertest');
+import request from 'supertest';
+import { mockUserId } from './test-helpers/mock-data.factory';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -20,7 +20,7 @@ describe('AuthController (e2e)', () => {
           return {
             select: jest.fn().mockReturnValue({
               exec: jest.fn().mockResolvedValue({
-                _id: 'fake-user-id',
+                _id: mockUserId,
                 email: 'test@gmail.com',
                 password: hashedPassword,
                 isTwoFactorAuthenticationEnabled: false,
@@ -29,9 +29,7 @@ describe('AuthController (e2e)', () => {
           };
         }
         return {
-          select: jest
-            .fn()
-            .mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
+          select: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
         };
       }),
     };
@@ -55,7 +53,6 @@ describe('AuthController (e2e)', () => {
   });
 
   describe('POST /auth/login', () => {
-    // Test Case 1
     it('responds with json (use expect)', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
@@ -65,7 +62,6 @@ describe('AuthController (e2e)', () => {
         .expect(201);
     });
 
-    // Test Case 2
     it('responds with json (use async/await)', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/login')
@@ -77,7 +73,6 @@ describe('AuthController (e2e)', () => {
       expect(response.body).toHaveProperty('access_token');
     });
 
-    // Test Case 3:
     it('responds with 400 Bad Request when validation fails', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/login')
