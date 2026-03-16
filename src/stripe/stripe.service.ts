@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import Stripe from 'stripe';
 import { ConfigService } from '@nestjs/config';
 
@@ -47,7 +47,7 @@ export class StripeService {
   // ==================  SUBSCRIPTION  ===========================
   async createSubscriptionSession(userId: string) {
     const priceId = this.configService.get<string>('SUBSCRIPTION_PRICE_ID')?.trim() || '';
-    //const priceId = 'price_1TA48uHKvVTGLXs9Jys7Nreu';
+
     if (!priceId) {
       throw new Error('Missing SUBSCRIPTION_PRICE_ID in configuration');
     }
@@ -67,6 +67,48 @@ export class StripeService {
     });
 
     return { checkoutUrl: session.url };
+  }
+
+  constructEventFromPayload(signature: string, payload: Buffer): Stripe.Event {
+    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    if (!webhookSecret) {
+      throw new BadRequestException('Missing STRIPE_WEBHOOK_SECRET in configuration');
+    }
+
+    try {
+      return this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    } catch (err) {
+      throw new BadRequestException(`Webhook Error: ${err.message}`);
+    }
+  }
+
+  async handleWebhookEvent(event: Stripe.Event) {
+    switch (event.type) {
+      case 'checkout.session.completed':
+        const session = event.data.object as Stripe.Checkout.Session;
+
+        if (session.mode === 'payment') {
+          const orderId = session.metadata?.orderId;
+          console.log(`[SERVICE] Updating order status for Order #${orderId} to PAID...`);
+        }
+        else if (session.mode === 'subscription') {
+          const userId = session.client_reference_id;
+          console.log(`[SERVICE] Activating the VIP package for User: ${userId}...`);
+        }
+        break;
+
+      case 'invoice.paid':
+        const invoice = event.data.object as any;
+
+        if (invoice.subscription) {
+          const customerEmail = invoice.customer_email;
+          console.log(`[SERVICE] Customer ${customerEmail} have just been successfully renewed. Plus VIP days!`);
+        }
+        break;
+
+      default:
+        console.log(`[SERVICE] Ignore an unprocessed event: ${event.type}`);
+    }
   }
 
   getStripeInstance() {

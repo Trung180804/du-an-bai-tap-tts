@@ -2,14 +2,10 @@ import { Controller, Post, Get, Body, Req, Headers, BadRequestException } from '
 import type { RawBodyRequest } from '@nestjs/common';
 import { StripeService } from './stripe.service';
 import { Request } from 'express';
-import { ConfigService } from '@nestjs/config';
 
 @Controller('stripe')
 export class StripeController {
-  constructor(
-    private readonly stripeService: StripeService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly stripeService: StripeService) {}
 
   @Post('checkout')
   async checkout(@Body() body: { orderId: string; amount: number }) {
@@ -37,44 +33,14 @@ export class StripeController {
     @Headers('stripe-signature') signature: string,
     @Req() req: RawBodyRequest<Request>,
   ) {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
-
-    if (!signature) throw new BadRequestException('Missing stripe signature');
-    if (!req.rawBody) throw new BadRequestException('Missing raw body for webhook');
-    if (!webhookSecret) throw new BadRequestException('Missing STRIPE_WEBHOOK_SECRET in configuration');
-
-    let event;
-
-    try {
-      event = this.stripeService.getStripeInstance().webhooks.constructEvent(
-        req.rawBody, 
-        signature,
-        webhookSecret,
-      );
-    } catch (err) {
-      throw new BadRequestException(`Webhook Error: ${err.message}`);
+    if (!req.rawBody) {
+      throw new BadRequestException('Missing raw body');
     }
 
-    // Handling payment events
-    switch (event.type) {
-      case 'checkout.session.completed':
-        const session = event.data.object;
-        const orderId = session.metadata.orderId;
-        console.log(`[CONFIRM] order ${orderId} has been paid successfully!`);
-        break;
+    const event = this.stripeService.constructEventFromPayload(signature, req.rawBody);
 
-      case 'invoice.paid':
-        const invoice = event.data.object;
-        console.log(`[SUBSCRIPTION] Order ${invoice.id} has been renewed successfully!`);
-        break;
+    await this.stripeService.handleWebhookEvent(event);
 
-      case 'payment_intent.payment_failed':
-        console.log('[FAILED] Transaction failed due to card error/insufficient funds.');
-        break;
-
-      default:
-        console.log(`Skipping event: ${event.type}`);
-    }
     return { received: true };
   }
 
