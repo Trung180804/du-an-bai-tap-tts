@@ -1,12 +1,17 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import Stripe from 'stripe';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service';
+import { buildCheckoutPayload, buildSubscriptionPayload } from './stripe.factory';
 
 @Injectable()
 export class StripeService {
   private stripe: Stripe;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService,
+  ) {
     const stripeSecretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
 
     if (!stripeSecretKey) {
@@ -19,54 +24,36 @@ export class StripeService {
   }
 
   async createCheckoutSession(orderId: string, amount: number) {
-    const session = await this.stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'VND',
-            product_data: {
-              name: `Order #${orderId}`,
-            },
-            unit_amount: amount,
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: `http://localhost:3000/stripe/success?orderId=${orderId}`,
-      cancel_url: `http://localhost:3000/stripe/cancel`,
-      metadata: {
-        orderId: orderId,
-      },
-    });
-
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')!;
+    const payload = buildCheckoutPayload(orderId, amount, frontendUrl);
+    const session = await this.stripe.checkout.sessions.create(payload);
     return { checkoutUrl: session.url };
   }
 
   // ==================  SUBSCRIPTION  ===========================
   async createSubscriptionSession(userId: string) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')!;
     const priceId = this.configService.get<string>('SUBSCRIPTION_PRICE_ID')?.trim() || '';
 
     if (!priceId) {
       throw new Error('Missing SUBSCRIPTION_PRICE_ID in configuration');
     }
+    const payload = buildSubscriptionPayload(userId, priceId, frontendUrl);
+    const session = await this.stripe.checkout.sessions.create(payload);
+    return { checkoutUrl: session.url };
+  }
 
-    const session = await this.stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      mode: 'subscription',
-      success_url: `http://localhost:3000/stripe/success?userId=${userId}`,
-      cancel_url: `http://localhost:3000/stripe/cancel`,
-      client_reference_id: userId,
+  async createCustomerPortalSession(customerId: string) {
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required to access the billing portal');
+    }
+
+    const session = await this.stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${this.configService.get('FRONTEND_URL')}/stripe/success`,
     });
 
-    return { checkoutUrl: session.url };
+    return { portalUrl: session.url };
   }
 
   constructEventFromPayload(signature: string, payload: Buffer): Stripe.Event {
@@ -90,8 +77,7 @@ export class StripeService {
         if (session.mode === 'payment') {
           const orderId = session.metadata?.orderId;
           console.log(`[SERVICE] Updating order status for Order #${orderId} to PAID...`);
-        }
-        else if (session.mode === 'subscription') {
+        } else if (session.mode === 'subscription') {
           const userId = session.client_reference_id;
           console.log(`[SERVICE] Activating the VIP package for User: ${userId}...`);
         }
@@ -103,6 +89,23 @@ export class StripeService {
         if (invoice.subscription) {
           const customerEmail = invoice.customer_email;
           console.log(`[SERVICE] Customer ${customerEmail} have just been successfully renewed. Plus VIP days!`);
+        }
+        break;
+
+      case 'invoice.payment_failed':
+        const failedInvoice = event.data.object as any;
+        const customerEmail = failedInvoice.customer_email || 'trung@gmail.com';
+        const customerId = failedInvoice.customer;
+
+        if (customerEmail && customerId) {
+          console.log(`[SERVICE] Payment failed for customer ${customerEmail} (ID: ${customerId}). Please check the payment method and retry.`);
+          const portalSession = await this.createCustomerPortalSession(customerId);
+          // Optionally, you can call the mail service to notify the customer
+          await this.mailService.sendPaymentFailedEmail(
+            customerEmail,
+            portalSession.portalUrl,
+            'vi',
+          );
         }
         break;
 

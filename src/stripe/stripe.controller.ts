@@ -44,6 +44,11 @@ export class StripeController {
     return { received: true };
   }
 
+  @Post('portal')
+  async createCustomerPortalSession(@Body() body: { customerId: string }) {
+    return this.stripeService.createCustomerPortalSession(body.customerId);
+  }
+
   // API automatically generate subscription plans with API Keys
   @Get('setup-subscription')
   async setupPrice() {
