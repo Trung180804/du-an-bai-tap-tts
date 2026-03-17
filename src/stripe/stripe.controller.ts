@@ -49,6 +49,12 @@ export class StripeController {
     return this.stripeService.createCustomerPortalSession(body.customerId);
   }
 
+  @Post('refund')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async refundPayment(@Body() body: { paymentIntentId: string }) {
+    return this.stripeService.refundPayment(body.paymentIntentId);
+  }
+
   // API automatically generate subscription plans with API Keys
   @Get('setup-subscription')
   async setupPrice() {
@@ -69,5 +75,16 @@ export class StripeController {
       message: 'Successfully created product and price',
       priceId: price.id,
     };
+  }
+
+  @Get('history/:customerId')
+  async listPaymentHistory(@Param('customerId') customerId: string) {
+    return this.stripeService.listPaymentHistory(customerId);
+  }
+
+  @Get('dashboard')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async dashboardAnalytics(@Query('range') range: 'day' | 'week' | 'month' | 'year' = 'month') {
+    return this.stripeService.dashboardAnalytics(range);
   }
 }

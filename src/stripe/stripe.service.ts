@@ -2,8 +2,14 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import Stripe from 'stripe';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
-import { buildCheckoutPayload, buildSubscriptionPayload } from './stripe.factory';
-
+import { RedisService } from '@/redis/redis.service';
+import {
+  buildCheckoutPayload,
+  buildSubscriptionPayload,
+  calculateStartTimestamp,
+  MEANINGFUL_EVENT_TYPES,
+  formatRecentActivities,
+} from './stripe.factory';
 @Injectable()
 export class StripeService {
   private stripe: Stripe;
@@ -11,6 +17,7 @@ export class StripeService {
   constructor(
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    private readonly redisService: RedisService,
   ) {
     const stripeSecretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
 
@@ -70,6 +77,14 @@ export class StripeService {
   }
 
   async handleWebhookEvent(event: Stripe.Event) {
+    const redisKey = `stripe_event_${event.id}`;
+    const isDuplicate = await this.redisService.getCache(redisKey);
+    if (isDuplicate) {
+      console.log(`[WEBHOOK] Duplicate event received: ${event.id}. Ignoring.`);
+      return;
+    }
+    await this.redisService.setCache(redisKey, true, 3600); // Cache for 1 hour
+
     switch (event.type) {
       case 'checkout.session.completed':
         const session = event.data.object as Stripe.Checkout.Session;
@@ -111,6 +126,103 @@ export class StripeService {
 
       default:
         console.log(`[SERVICE] Ignore an unprocessed event: ${event.type}`);
+    }
+  }
+
+  async refundPayment(paymentIntentId: string) {
+    if (!paymentIntentId) {
+      throw new BadRequestException('Payment Intent ID is required for refund');
+    }
+    try {
+      const refund = await this.stripe.refunds.create({
+        payment_intent: paymentIntentId,
+      });
+
+      console.log(`[SERVICE] Refund initiated for Payment Intent ${paymentIntentId}. Refund ID: ${refund.id}, Status: ${refund.status}`);
+      return {
+        success: true,
+        message: `Refund initiated successfully`,
+        RefundID: refund.id,
+        status: refund.status,
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Refund failed for Payment Intent ${paymentIntentId}:`, error);
+      throw new BadRequestException(`Refund failed: ${error.message}`);
+    }
+  }
+
+  // -------------------- HISTORY ----------------------
+  async listPaymentHistory(customerId: string) {
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required to list payment history');
+    }
+    try {
+      const invoicesList = await this.stripe.invoices.list({
+        customer: customerId,
+        limit: 10,
+      });
+
+      const formattedPayments = invoicesList.data.map((invoice) => ({
+        // id: invoice.id,
+        amount: invoice.amount_paid,
+        currency: invoice.currency.toUpperCase(),
+        status: invoice.status,
+        created: new Date(invoice.created * 1000).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+        hosted_invoice_url: invoice.hosted_invoice_url || null,
+        invoice_pdf: invoice.invoice_pdf || null,
+      }));
+      return {
+        success: true,
+        payments: formattedPayments,
+        total: invoicesList.data.length,
+        // data: invoicesList.data,
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while fetching payment history for Customer ${customerId}:`, error);
+      throw new BadRequestException(`Error occurred while fetching payment history: ${error.message}`);
+    }
+  }
+
+  // ================== ANALYTICS ===========================
+  async dashboardAnalytics(range: 'day' | 'week' | 'month' | 'year' = 'month') {
+    try {
+      const startTimestamp = calculateStartTimestamp(range);
+      const [payments, refunds, invoices, events] = await Promise.all([
+        this.stripe.paymentIntents.list({ created: { gte: startTimestamp }, limit: 100 }),
+        this.stripe.refunds.list({ created: { gte: startTimestamp }, limit: 100 }),
+        this.stripe.invoices.list({ created: { gte: startTimestamp }, limit: 100 }),
+        this.stripe.events.list({
+          types: MEANINGFUL_EVENT_TYPES,
+          limit: 15,
+        }),
+      ]);
+
+      const successfulPayments = payments.data.filter((payment) => payment.status === 'succeeded');
+      const totalRevenue = payments.data.reduce((sum, payment) => sum + payment.amount, 0);
+
+      const chartDataMap: Record<string, number> = {};
+      successfulPayments.forEach((payment) => {
+        const dateKey = new Date(payment.created * 1000).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+        chartDataMap[dateKey] = (chartDataMap[dateKey] || 0) + payment.amount;
+      });
+
+      const chartData = Object.entries(chartDataMap).map(([date, amount]) => ({ date, revenue: chartDataMap[date] }));
+      const recentActivities = formatRecentActivities(events.data);
+
+      return {
+        success: true,
+        data: {
+          total_revenue: totalRevenue,
+          total_refunds: refunds.data.length,
+          total_invoices: invoices.data.length,
+          currency: 'VND',
+        },
+        chart_data: chartData,
+        recent_activities: recentActivities,
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while fetching revenue analytics:`, error);
+      throw new BadRequestException(`Error occurred while fetching revenue analytics: ${error.message}`);
     }
   }
 

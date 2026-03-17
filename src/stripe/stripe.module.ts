@@ -3,9 +3,10 @@ import { StripeController } from './stripe.controller';
 import { StripeService } from './stripe.service';
 import { ConfigModule } from '@nestjs/config';
 import { MailModule } from '@/mail/mail.module';
+import { RedisModule } from '@/redis/redis.module';
 
 @Module({
-  imports: [ConfigModule, MailModule],
+  imports: [ConfigModule, MailModule, RedisModule],
   controllers: [StripeController],
   providers: [StripeService],
 })
