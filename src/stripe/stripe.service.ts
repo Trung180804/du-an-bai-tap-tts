@@ -3,12 +3,16 @@ import Stripe from 'stripe';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
 import { RedisService } from '@/redis/redis.service';
+import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import {
   buildCheckoutPayload,
   buildSubscriptionPayload,
   calculateStartTimestamp,
   MEANINGFUL_EVENT_TYPES,
   formatRecentActivities,
+  formatCustomerData,
+  formatCustomerList,
 } from './stripe.factory';
 @Injectable()
 export class StripeService {
@@ -26,7 +30,7 @@ export class StripeService {
     }
 
     this.stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2026-02-25.clover',
+      apiVersion: this.configService.get<string>('STRIPE_API_VERSION') as any || '2026-02-25.clover',
     });
   }
 
@@ -223,6 +227,165 @@ export class StripeService {
     } catch (error) {
       console.error(`[SERVICE] Error occurred while fetching revenue analytics:`, error);
       throw new BadRequestException(`Error occurred while fetching revenue analytics: ${error.message}`);
+    }
+  }
+
+  async exportRevenueReport(
+    range: 'day' | 'week' | 'month' | 'year' = 'month',
+    format: 'excel' | 'csv' | 'zip' = 'excel',
+  ) {
+    try {
+      const startTimestamp = calculateStartTimestamp(range);
+      const payments = await this.stripe.paymentIntents.list({ created: { gte: startTimestamp }, limit: 100 });
+      const successfulPayments = payments.data.filter((payment) => payment.status === 'succeeded');
+      // Create a new Excel workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Revenue Report');
+
+      // Add headers
+      worksheet.columns = [
+        { header: 'STT', key: 'stt', width: 5 },
+        { header: 'ID', key: 'id', width: 35 },
+        { header: 'Amount (VND)', key: 'amount', width: 15 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Date', key: 'created_at', width: 25 },
+      ];
+
+      // Add data
+      payments.data.forEach((payment, index) => {
+        worksheet.addRow({
+          stt: index + 1,
+          id: payment.id,
+          amount: payment.amount,
+          status: payment.status,
+          created_at: new Date(payment.created * 1000).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+        });
+      });
+
+      if (format === 'excel') {
+        const buffer = await workbook.xlsx.writeBuffer();
+        return {
+          buffer,
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          extension: 'xlsx',
+        };
+      }
+
+      if (format === 'csv') {
+        const buffer = await workbook.csv.writeBuffer();
+        return {
+          buffer,
+          contentType: 'text/csv',
+          extension: 'csv',
+        };
+      }
+
+      if (format === 'zip') {
+        const excelBuffer = await workbook.xlsx.writeBuffer();
+        const csvBuffer = await workbook.csv.writeBuffer();
+        const zip = new JSZip();
+
+        zip.file('revenue_report.xlsx', excelBuffer);
+        zip.file('revenue_report.csv', csvBuffer);
+        const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+        return {
+          buffer: zipBuffer,
+          contentType: 'application/zip',
+          extension: 'zip',
+        };
+      }
+      throw new BadRequestException('Invalid format specified. Supported formats are: excel, csv, zip!!');
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while exporting revenue report:`, error);
+      throw new BadRequestException(`Error occurred while exporting revenue report: ${error.message}`);
+    }
+  }
+
+  // =================== CRUD =========================
+  async createCustomer(email: string, name?: string, phone?: string) {
+    if (!email) {
+      throw new BadRequestException('Email is required to create a customer');
+    }
+    try {
+      const customer = await this.stripe.customers.create({ email, name, phone });
+      return {
+        success: true,
+        message: `Customer created successfully with ID: ${customer.id}`,
+        customer: formatCustomerData(customer),
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while creating customer:`, error);
+      throw new BadRequestException(`Error occurred while creating customer: ${error.message}`);
+    }
+  }
+
+  async listCustomers() {
+    try {
+      const customers = await this.stripe.customers.list({
+        limit: this.configService.get<number>('STRIPE_DEFAULT_LIMIT') || 20 });
+      return {
+        success: true,
+        customers: formatCustomerList(customers.data as Stripe.Customer[]),
+        total: customers.data.length,
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while listing customers:`, error);
+      throw new BadRequestException(`Error occurred while listing customers: ${error.message}`);
+    }
+  }
+
+  async getCustomerById(customerId: string) {
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required to retrieve customer details');
+    }
+    try {
+      const customer = await this.stripe.customers.retrieve(customerId);
+      if (typeof customer === 'string') {
+        throw new BadRequestException('Customer not found');
+      }
+      if (!customer || customer.deleted) {
+        throw new BadRequestException('Customer not found or has been deleted');
+      }
+      return {
+        success: true,
+        customer: formatCustomerData(customer),
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while retrieving customer:`, error);
+      throw new BadRequestException(`Error occurred while retrieving customer: ${error.message}`);
+    }
+  }
+
+  async deleteCustomer(customerId: string) {
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required to delete a customer');
+    }
+    try {
+      await this.stripe.customers.del(customerId);
+      return {
+        success: true,
+        message: `Customer deleted successfully with ID: ${customerId}`,
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while deleting customer:`, error);
+      throw new BadRequestException(`Error occurred while deleting customer: ${error.message}`);
+    }
+  }
+
+  async updateCustomer(customerId: string, email?: string, name?: string, phone?: string) {
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required to update a customer');
+    }
+    try {
+      const updatedCustomer = await this.stripe.customers.update(customerId, { email, name, phone });
+      return {
+        success: true,
+        message: `Customer updated successfully with ID: ${updatedCustomer.id}`,
+        customer: formatCustomerData(updatedCustomer),
+      };
+    } catch (error) {
+      console.error(`[SERVICE] Error occurred while updating customer:`, error);
+      throw new BadRequestException(`Error occurred while updating customer: ${error.message}`);
     }
   }
 

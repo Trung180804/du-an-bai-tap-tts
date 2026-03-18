@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, Req, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Put, Delete,
+  Headers, BadRequestException, Param, Query,Res } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { StripeService } from './stripe.service';
 import { Request } from 'express';
-
+import type { Response } from 'express';
 @Controller('stripe')
 export class StripeController {
   constructor(private readonly stripeService: StripeService) {}
@@ -86,5 +87,58 @@ export class StripeController {
   // @UseGuards(JwtAuthGuard, RolesGuard)
   async dashboardAnalytics(@Query('range') range: 'day' | 'week' | 'month' | 'year' = 'month') {
     return this.stripeService.dashboardAnalytics(range);
+  }
+
+  @Get('export')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async revenueExport(
+    @Query('range') range: 'day' | 'week' | 'month' | 'year' = 'month',
+    @Query('format') format: 'excel' | 'csv' | 'zip' = 'excel',
+    @Res() res: Response,
+  ) {
+    const { buffer, contentType, extension } = await this.stripeService.exportRevenueReport(range, format);
+
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename=Revenue_export_${range}.${extension}`,
+      'Content-Length': (buffer as any).byteLength || (buffer as any).length,
+    });
+
+    res.end(buffer);
+  }
+
+  // ============ CRUD ADMIN PANEL =============
+
+  @Post('admin/customers')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async createCustomer(@Body() body: { email: string; name?: string; phone?: string }) {
+    return this.stripeService.createCustomer(body.email, body.name, body.phone);
+  }
+
+  @Get('admin/customers')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async listCustomers() {
+    return this.stripeService.listCustomers();
+  }
+
+  @Get('admin/customers/:id')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async getCustomerById(@Param('id') id: string) {
+    return this.stripeService.getCustomerById(id);
+  }
+
+  @Put('admin/customers/:id')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async updateCustomer(
+    @Param('id') id: string,
+    @Body() body: { email?: string; name?: string; phone?: string }
+  ) {
+    return this.stripeService.updateCustomer(id, body.email, body.name, body.phone);
+  }
+
+  @Delete('admin/customers/:id')
+  // @UseGuards(JwtAuthGuard, RolesGuard)
+  async deleteCustomer(@Param('id') id: string) {
+    return this.stripeService.deleteCustomer(id);
   }
 }

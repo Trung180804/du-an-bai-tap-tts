@@ -119,3 +119,22 @@ export const formatRecentActivities = (eventsData: Stripe.Event[]) => {
     return { time, type: event.type, message };
   });
 };
+
+export const formatUnixTimeVN = (timestamp: number) => {
+  return new Date(timestamp * 1000).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+};
+
+export const formatCustomerData = (customer: Stripe.Customer) => {
+  return {
+    id: customer.id,
+    email: customer.email,
+    name: customer.name || 'N/A',
+    phone: customer.phone || 'N/A',
+    balance: customer.balance,
+    createdAt: formatUnixTimeVN(customer.created),
+  };
+};
+
+export const formatCustomerList = (customers: Stripe.Customer[]) => {
+  return customers.map(formatCustomerData);
+};
