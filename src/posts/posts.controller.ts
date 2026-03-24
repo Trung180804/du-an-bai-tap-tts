@@ -74,6 +74,20 @@ export class PostsController {
   async getComments(@Param('id') id: string) {
     return this.postsService.checkCommentsForPost(id);
   }
+
+  @Put('comment/:commentId')
+  async updateComment(
+    @Req() req,
+    @Param('commentId') commentId: string,
+    @Body() body: { content: string; imageUrl?: string },
+  ) {
+    return this.postsService.updateComment(commentId, req.user.userId, body.content, body.imageUrl);
+  }
+
+  @Delete('comment/:commentId')
+  async deleteComment(@Req() req, @Param('commentId') commentId: string) {
+    return this.postsService.deleteComment(commentId, req.user.userId);
+  }
   /* --use debug/fix two comment latest--
   @Post(':id/recount-comments')
   async recount(@Param('id') id: string) {
