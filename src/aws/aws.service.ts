@@ -43,7 +43,7 @@ export class AwsService {
         url: fileUrl,
       };
     } catch (error) {
-      console.error('[S3] Lỗi upload file lên AWS:', error);
+      console.error('[S3] Error upload file to AWS:', error);
       throw new InternalServerErrorException(`Error uploading file: ${error.message}`);
     }
   }

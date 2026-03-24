@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trung IT - Realtime Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #log { background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
+        .comment { color: blue; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>Websocket Real-time Comment</h2>
+    <div id="log">Đang chờ kết nối...</div>
+    <br>
+    <input type="text" id="postId" placeholder="698c2f31c2d50f451ef5bfa4">
+    <script>
+        // Lấy token từ Login Postman dán vào đây
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OThjMmYwN2MyZDUwZjQ1MWVmNWJmYTEiLCJlbWFpbCI6ImFkbWluQHRlc3QuY29tIiwiaXNUd29GYWN0b3JQZW5kaW5nIjpmYWxzZSwiaWF0IjoxNzcwNzk0NzY3LCJleHAiOjE3NzA4ODExNjd9.dDkGisLnWLFmaC-BA2XiIKv6YtqaDTwzApTdhq_2RPQ';
+        const socket = io('http://localhost:3001', {
+            auth: { token }
+        });
+
+        socket.on('connect', () => {
+            document.getElementById('log').innerHTML += '<p>✅ Đã kết nối Websocket thành công!</p>';
+        });
+
+        // Lắng nghe mọi comment mới (Bạn có thể sửa gateway để emit theo postId cụ thể)
+        socket.onAny((eventName, data) => {
+            if (eventName.startsWith('newComment:')) {
+                const log = document.getElementById('log');
+                log.innerHTML += `<p class="comment">💬 Có comment mới: ${data.content}</p>`;
+                log.scrollTop = log.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>

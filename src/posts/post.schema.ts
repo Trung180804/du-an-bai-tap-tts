@@ -1,6 +1,6 @@
-import { Prop, Schema } from "@nestjs/mongoose";
-import { Document, Types } from "mongoose";
-import { SchemaFactory } from "@nestjs/mongoose";
+import { Prop, Schema } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+import { SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ timestamps: true })
 export class Post extends Document {

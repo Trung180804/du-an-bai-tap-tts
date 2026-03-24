@@ -61,4 +61,37 @@ export class MailProcessor {
       `--- Send mail ${lang.toUpperCase()} succesfully to: ${email} ---`,
     );
   }
+
+  @Process(MailJob.SEND_PAYMENT_FAILED_EMAIL)
+  async handleSendPaymentFailedEmail(job: Job) {
+    const { email, name, portalUrl, lang = 'vi' } = job.data;
+
+    const rootDir = process.cwd();
+    const logoPath = join(rootDir, 'src', 'templates', 'images', 'logo.jpg');
+    const logoBase64 = fs.existsSync(logoPath) ? fs.readFileSync(logoPath, 'base64') : '';
+
+    const templateName = MailTemplate.PAYMENT_FAILED;
+    const templateFile = `${templateName}.${lang}.hbs`;
+    const templatePath = join(rootDir, 'src', 'templates', templateFile);
+
+    let source = '';
+    if (fs.existsSync(templatePath)) {
+      source = fs.readFileSync(templatePath, 'utf8');
+    } else {
+      console.log("Don't find template, sending error email!");
+      return;
+    }
+
+    const template = handlebars.compile(source);
+    const finalHtml = template({ logoBase64, portalUrl }); 
+    const subject = lang === 'en' ? MailSubject.PAYMENT_FAILED_EN : MailSubject.PAYMENT_FAILED_VI;
+
+    await this.mailerService.sendMail({
+      to: email,
+      subject,
+      html: finalHtml,
+    });
+
+    console.log(`--- ERROR message email sent to: ${email} ---`);
+  }
 }

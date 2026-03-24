@@ -14,13 +14,6 @@ describe('AuthController', () => {
   let controller: AuthController;
   let authService: AuthService;
 
-  console.log('DEBUG IMPORTS:', {
-    AuthController,
-    AuthService,
-    UsersService,
-    JwtAuthGuard,
-  });
-
   const mockAuthService = {
     register: jest.fn(),
     login: jest.fn(),

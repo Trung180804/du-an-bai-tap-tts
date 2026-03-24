@@ -25,4 +25,20 @@ export class MailService {
     );
     return { success: true, message: 'Email has been queued!' };
   }
+
+  async sendPaymentFailedEmail(email: string, portalUrl: string, lang: 'vi' | 'en') {
+    await this.mailQueue.add(
+      MailJob.SEND_PAYMENT_FAILED_EMAIL,
+      {
+        email,
+        portalUrl,
+        lang,
+      },
+      {
+        attempts: 3,
+        backoff: 5000,
+      },
+    );
+    return { success: true, message: 'Email has been queued!' };
+  }
 }
