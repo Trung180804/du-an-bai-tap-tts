@@ -18,6 +18,7 @@ import { UpdateUserDto } from './dto/updateUser.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from 'src/minio/minio.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
+import { timestamp } from 'rxjs';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -77,5 +78,15 @@ export class UsersController {
       ...updateDto,
       ...(avatarUrl && { avatar: avatarUrl }),
     });
+  }
+
+  @Get('test-cicd')
+  testCICD() {
+    return{
+      message: 'Test CI/CD successful!!!',
+      author: 'Trugn dep trai',
+      timestamp: new Date().toISOString(),
+      status: 'Successful!!',
+    };
   }
 }
