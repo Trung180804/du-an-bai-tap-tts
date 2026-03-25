@@ -10,7 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
-import { UsersService } from '../users/users.service'; // Đã sửa đường dẫn tương đối để Jest khỏi phàn nàn
+import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 import { AuthRegisterDto } from './dto/authRegister.dto';
@@ -33,7 +33,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user' })
   @ApiBody({ type: AuthRegisterDto })
   async register(@Body() registerDto: AuthRegisterDto) {
-    // Gọi thẳng service truyền DTO vào cho khớp với file test
     return this.authService.register(registerDto);
   }
 
@@ -58,11 +57,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '2FA Setup - Generate QR Code' })
   async setup2FA(@Request() req) {
-    // Xử lý case: Ném lỗi Forbidden nếu 2FA đang pending (theo yêu cầu của spec)
     if (req.user?.isTwoFactorPending) {
       throw new ForbiddenException('2FA setup is pending');
     }
-    
+
     return this.authService.setup2FA(req.user.userId);
   }
 
@@ -96,7 +94,6 @@ export class AuthController {
     @Request() req,
     @Body() dto: TwoFactorAuthDto,
   ) {
-    // Xử lý case: Ném lỗi BadRequest nếu không truyền code lên (theo yêu cầu của spec)
     if (!dto || !dto.twoFactorAuthenticationCode) {
       throw new BadRequestException('Two factor authentication code is required');
     }
@@ -116,4 +113,3 @@ export class AuthController {
     return this.authService.changePassword(req.user.userId, dto);
   }
 }
-

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { GetUser } from '@/getUser.decorator';
+import { GetUser } from '../getUser.decorator';
 
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/updateUser.dto';
