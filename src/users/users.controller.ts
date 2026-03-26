@@ -80,11 +80,11 @@ export class UsersController {
     });
   }
 
-  @Get('test-cicd')
+   @Get('test-cicd')
   testCICD() {
-    return{
+    return {
       message: 'Test CI/CD successful!!!',
-      author: 'Trugn dep trai',
+      author: 'Trung dep trai',
       timestamp: new Date().toISOString(),
       status: 'Successful!!',
     };
