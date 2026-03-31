@@ -35,7 +35,8 @@ export class AwsService {
 
       await this.s3Client.send(command);
 
-      const fileUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${uniqueFileName}`;
+      const currentRegion = this.region || process.env.AWS_S3_REGION || 'ap-southeast-1';      
+      const fileUrl = `https://${this.bucketName}.s3.${currentRegion}.amazonaws.com/${uniqueFileName}`;
 
       return {
         success: true,
