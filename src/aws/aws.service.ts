@@ -30,7 +30,7 @@ export class AwsService {
         Key: uniqueFileName,
         Body: file.buffer,
         ContentType: file.mimetype,
-        ACL: 'public-read',
+        // ACL: 'public-read',
       });
 
       await this.s3Client.send(command);
