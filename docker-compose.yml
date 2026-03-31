@@ -1,5 +1,12 @@
 version: '3.8'
 services:
+
+  redis:
+    image: redis:latest
+    container_name: nest-redis
+    ports:
+      - "6379:6379"
+    restart: always
   minio:
     image: minio/minio:latest
     container_name: nest-minio

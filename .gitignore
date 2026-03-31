@@ -3,6 +3,10 @@
 /node_modules
 /build
 
+# AWS Keys
+AWS_KEY/
+stripe.exe
+
 # Logs
 logs
 *.log
@@ -45,6 +49,7 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+.pem
 
 # Runtime data
 pids

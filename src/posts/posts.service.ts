@@ -610,9 +610,9 @@ export class PostsService {
   }
 
   // ======================== Schedule =======================
-  @Cron('*/10 * * * * *')
+  @Cron('* 45 * * * *')
   // second - minute - hour - day of month - month - day of week
- 
+
   // Rule 1: Run at 00:00 eveday
   // @Cron('0 0 0 * * *')
 

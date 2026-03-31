@@ -1,9 +1,9 @@
-import Redis from "ioredis";
-import { Injectable, OnModuleInit } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import Redis from 'ioredis';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class RedisService implements OnModuleInit{
+export class RedisService implements OnModuleInit {
   private redisClient: Redis;
 
   constructor(private readonly configService: ConfigService) {}

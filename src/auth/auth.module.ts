@@ -1,3 +1,4 @@
+import { QueueName } from './../common/enums/queue.enum';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -9,12 +10,18 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { User, UserSchema } from 'src/users/user.schema';
 import { UsersModule } from '@/users/users.module';
+import { MailModule } from '@/mail/mail.module';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
   imports: [
+    BullModule.registerQueue({
+      name: QueueName.MAIL_QUEUE,
+    }),
     UsersModule,
     ConfigModule.forRoot(),
     PassportModule,
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

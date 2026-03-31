@@ -71,12 +71,24 @@ export class PostsController {
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
           : 'application/zip';
 
-    res.set({ 
+    res.set({
       'Content-Type': contentType,
       'Content-Disposition': `attachment; filename="posts_export_${dayjs().format('YYYYMMDD_HHmm')}.${extension}"`,
     });
 
     return res.send(buffer);
+  }
+
+  @Post('cleanupPosts')
+  async cleanupPosts() {
+    await this.postsService.cleanupNoInteractionPosts();
+    return { message: 'Manual cleanup triggered successfully' };
+  }
+
+  // src/posts/posts.controller.ts
+  @Post('test-schedule-setup')
+  async setupTest(@Req() req) {
+    return this.postsService.createExpiredPost(req.user.userId);
   }
 
   @Put(':id')

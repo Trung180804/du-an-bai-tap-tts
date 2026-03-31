@@ -1,7 +1,6 @@
-import { Prop, Schema } from "@nestjs/mongoose";
-import { Document, Types } from "mongoose";
-import { SchemaFactory } from "@nestjs/mongoose";
-import { Post } from "./post.schema";
+import { Prop, Schema } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+import { SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({ timestamps: true })
 export class Like extends Document {
